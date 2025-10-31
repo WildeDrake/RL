@@ -1,5 +1,4 @@
 from collections import deque
-from csv import writer
 import torch
 import gymnasium as gym
 from agent import AtariAgent
@@ -32,8 +31,6 @@ def train(env: gym.Env, agent: AtariAgent, n_episodes: int, batch_size: int, max
             agent.optimise(batch_size)
             # Actualiza la observación actual.
             observation = next_observation
-            # Realiza un paso de optimización de la red Q.
-            agent.optimise(batch_size)
             # Verifica si el episodio ha terminado.
             if done:
                 break
