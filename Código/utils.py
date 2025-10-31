@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 import gymnasium as gym
+import configparser
 
 
 # Funcion para convertir observaciones a tensores de PyTorch
@@ -18,7 +19,7 @@ class NoopStart(gym.Wrapper):
         super().__init__(env)
         self.noop_max = noop_max
         self.noop_action = 0
-        
+
     # Sobrescribe el método reset para incluir acciones Noop al inicio del episodio
     def reset(self, **kwargs):
         obs, info = self.env.reset(**kwargs)
@@ -43,3 +44,13 @@ def wrap_env(env: gym.Env):
     # Pila de múltiples fotogramas consecutivos para proporcionar información temporal al agente
     env = gym.wrappers.FrameStack(env, num_stack=4)
     return env
+
+
+# Cargar parámetros desde un archivo de configuración INI
+def load_parameters_from_config(config_file, mode="Training"):
+    config = configparser.ConfigParser()
+    config.read(config_file)
+    if mode not in config:
+        print(f"Error: '{mode}' section not found in the configuration file '{config_file}'.")
+        exit(1)
+    return config[mode]

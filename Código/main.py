@@ -1,78 +1,62 @@
 import argparse
-import configparser
-
+import torch
+import gymnasium as gym
+from utils import wrap_env, load_parameters_from_config
 from test import test
+from train import train
+from model import DQN
+from agent import AtariAgent
 
 
-def load_parameters_from_config(config_file, mode="Training"):
-    config = configparser.ConfigParser()
-    config.read(config_file)
-    if mode not in config:
-        print(f"Error: '{mode}' section not found in the configuration file '{config_file}'.")
-        exit(1)
-    return config[mode]
-
-
+# Ejecutar el modo de prueba
 def testing(config_data):
-    env_name = config_data.get('env')
-    model_path = config_data.get('model_path')
-    episodes = int(config_data.get('episodes'))
-    video_folder = config_data.get('video_folder')
-
-    import torch
-    import gymnasium as gym
-    from utils import wrap_env
-
-    device = torch.device(
-        'cuda'
-        if torch.cuda.is_available()
-        else 'mps'
-        if torch.has_mps
-        else 'cpu'
+    env_name = config_data.get('env') # Nombre del entorno
+    model_path = config_data.get('model_path') # Ruta del modelo entrenado
+    episodes = int(config_data.get('episodes')) # Número de episodios de prueba
+    video_folder = config_data.get('video_folder') # Carpeta para guardar los videos
+    # Cuda o MPS si está disponible, de lo contrario CPU
+    device = (
+        torch.device("cuda") if torch.cuda.is_available()
+        else torch.device("mps") if hasattr(torch, "has_mps") and torch.has_mps
+        else torch.device("cpu")
     )
-
+    # Carga de entorno gymnasium
     env = gym.make(env_name, render_mode='rgb_array')
     env = wrap_env(env)
-
-    policy_net = torch.load(model_path).to(device)
-
+    # Carga del modelo entrenado
+    policy_net = DQN(env.action_space.n)
+    policy_net.load_state_dict(torch.load(model_path, map_location=device))
+    policy_net.to(device)
+    # Ejecutar pruebas
     test(env, policy_net, episodes, video_folder, device)
 
 
 def training(config_data):
-    env_name = config_data.get('env')
-    actions = int(config_data.get('actions'))
-    eps_start = float(config_data.get('eps_start'))
-    eps_end = float(config_data.get('eps_end'))
-    eps_decay = float(config_data.get('eps_decay'))
-    memory_size = int(config_data.get('memory_size'))
-    learning_rate = float(config_data.get('learning_rate'))
-    initial_memory = int(config_data.get('initial_memory'))
-    gamma = float(config_data.get('gamma'))
-    target_update = int(config_data.get('target_update'))
-    batch_size = int(config_data.get('batch_size'))
-    model_path = config_data.get('model_path')
-    episodes = int(config_data.get('episodes'))
+    # Cargar parámetros de configuración
+    env_name = config_data.get('env') # Nombre del entorno
+    actions = int(config_data.get('actions')) # Número de acciones posibles
+    eps_start = float(config_data.get('eps_start')) # Valor inicial de epsilon
+    eps_end = float(config_data.get('eps_end')) # Valor final de epsilon
+    eps_decay = float(config_data.get('eps_decay')) # Tasa de decaimiento de epsilon
+    memory_size = int(config_data.get('memory_size')) # Tamaño de la memoria de experiencia
+    learning_rate = float(config_data.get('learning_rate')) # Tasa de aprendizaje
+    initial_memory = int(config_data.get('initial_memory')) # Memoria inicial antes de entrenar
+    gamma = float(config_data.get('gamma')) # Factor de descuento
+    target_update = int(config_data.get('target_update')) # Frecuencia de actualización de la red objetivo
+    batch_size = int(config_data.get('batch_size')) # Tamaño del lote para el entrenamiento
+    model_path = config_data.get('model_path') # Ruta para guardar el modelo entrenado
+    episodes = int(config_data.get('episodes')) # Número de episodios
     max_episode_length = int(config_data.get('max_episode_length'))
-
-    # Cargar importaciones costosas aquí para acelerar el tiempo de inicio del programa.
-    import torch
-    import gymnasium as gym
-    from agent import AtariAgent
-    from train import train
-    from utils import wrap_env
-
-    device = torch.device(
-        'cuda'
-        if torch.cuda.is_available()
-        else 'mps'
-        if torch.has_mps
-        else 'cpu'
+    # Cuda o MPS si está disponible, de lo contrario CPU
+    device = (
+        torch.device("cuda") if torch.cuda.is_available()
+        else torch.device("mps") if hasattr(torch, "has_mps") and torch.has_mps
+        else torch.device("cpu")
     )
-
-    env = gym.make(env_name)
+    # Carga de entorno gymnasium
+    env = gym.make(env_name, render_mode='rgb_array')
     env = wrap_env(env)
-
+    # Inicialización del agente
     agent = AtariAgent(
         device=device,
         n_actions=actions,
@@ -84,26 +68,39 @@ def training(config_data):
         initial_memory=initial_memory,
         gamma=gamma,
         target_update=target_update,
-        network_file = model_path
+        network_file=model_path
     )
-
+    # Entrenamiento del agente
     train(env, agent, episodes, batch_size, max_episode_length)
-    torch.save(agent.policy_net.to('cpu'), model_path)
+    # Guardar el modelo entrenado
+    torch.save(agent.policy_net.state_dict(), model_path)
+
+
 
 
 def main():
+    # Parsear argumentos de línea de comandos
     parser = argparse.ArgumentParser()
     parser.add_argument('mode', choices=['Training', 'Testing'], help='Training or Testing')
     parser.add_argument('--config', '-c', help='INI configuration file', required=True)
-
     args = parser.parse_args()
     config_path = args.config
     config_data = load_parameters_from_config(config_path, args.mode)
-
+    # Validar parametros minimos segun el modo
+    required_keys = (
+        ["env", "actions", "learning_rate", "episodes"]
+        if args.mode == "Training"
+        else ["env", "model_path", "episodes", "video_folder"]
+    )
+    for key in required_keys:
+        if key not in config_data:
+            raise ValueError(f"Missing required parameter '{key}' for mode '{args.mode}' in config file.")
+    # Ejecutar el modo correspondiente
     if args.mode == 'Training':
         training(config_data)
     else:
         testing(config_data)
+
 
 
 if __name__ == '__main__':

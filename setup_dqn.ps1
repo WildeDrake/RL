@@ -1,6 +1,10 @@
 # Descargar:
 # https://www.python.org/downloads/release/python-3110
 
+# Para ejecutar script, abrir PowerShell y ejecutar:
+# Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
+# .\setup_dqn.ps1
+
 # Crear entorno virtual con Python 3.11
 python -m venv env
 .\env\Scripts\Activate.ps1

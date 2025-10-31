@@ -1,5 +1,4 @@
 import random
-
 import torch
 import gymnasium as gym
 from agent import AtariAgent
