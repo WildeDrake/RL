@@ -6,6 +6,7 @@ from model import DQN
 import math
 import torch
 import random
+import os
 
 # Agente de DQN para entornos Atari.
 class DQNAgent:
@@ -26,12 +27,14 @@ class DQNAgent:
     ) -> None:
         self.n_actions = n_actions
         self.device = device
-        # Deep Q network para la política y el objetivo, con optimizador para la política.
-        if network_file:
-            self.policy_net = torch.load(network_file).to(self.device)
-            self.target_net = torch.load(network_file).to(self.device)
+        # Verifica si existe el archivo antes de cargarlo
+        if network_file and os.path.exists(network_file):
+            print(f"Cargando modelo desde '{network_file}'...")
+            self.policy_net = torch.load(network_file, map_location=device)
+            self.target_net = torch.load(network_file, map_location=device)
         else:
-            # Crea nuevas redes de política y objetivo si no se proporcionan pesos pre-entrenados.
+            if network_file:
+                print(f"No se encontró el modelo '{network_file}', se entrenará desde cero.")
             self.policy_net = DQN(self.n_actions).to(device)
             self.target_net = DQN(self.n_actions).to(device)
             self.policy_net.apply(model.init_weights)

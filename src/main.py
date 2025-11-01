@@ -1,4 +1,5 @@
 import argparse
+import os
 import torch
 import gymnasium as gym
 import ale_py
@@ -34,9 +35,14 @@ def testing(config_data, agent_type):
     gym.register_envs(ale_py)
     env = gym.make(env_name, render_mode='rgb_array')
     env = wrap_env(env)
-    # Carga del modelo entrenado
-    policy_net.load_state_dict(torch.load(model_path, map_location=device))
-    policy_net.to(device)
+    # Carga del modelo entrenado solo si existe
+    if os.path.exists(model_path):
+        print(f"Cargando modelo desde '{model_path}'...")
+        policy_net.load_state_dict(torch.load(model_path, map_location=device))
+        policy_net.to(device)
+    else:
+        print(f"No se encontró el modelo '{model_path}', se ejecutará sin cargar pesos.")
+
     # Ejecutar pruebas
     test(env, policy_net, episodes, video_folder, device)
 
