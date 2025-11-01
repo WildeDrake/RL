@@ -65,6 +65,7 @@ class DQNAgent:
             action.to('cpu'),
             reward.to('cpu'),
             next_observation.to('cpu') if not done else None,
+            done
         )
 
     # Calcula el valor épsilon actual para la política épsilon-greedy.
