@@ -1,7 +1,7 @@
 import random
 import torch
 import gymnasium as gym
-from agent import AtariAgent
+from agent import DQNAgent, DDQNAgent
 from utils import convert_observation, wrap_env
 
 

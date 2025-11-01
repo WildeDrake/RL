@@ -1,13 +1,13 @@
 from collections import deque
 import torch
 import gymnasium as gym
-from agent import AtariAgent
+from agent import DQNAgent, DDQNAgent
 from torch.utils.tensorboard import SummaryWriter
 from utils import convert_observation
 
 
 # Función principal de entrenamiento del agente Atari.
-def train(env: gym.Env, agent: AtariAgent, n_episodes: int, batch_size: int, max_episode_length: int):
+def train(env: gym.Env, agent: DQNAgent, n_episodes: int, batch_size: int, max_episode_length: int):
     rewards = deque(maxlen=100)
     writer = SummaryWriter('runs/frogger')
     for episode in range(n_episodes):

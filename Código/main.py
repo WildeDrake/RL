@@ -5,7 +5,7 @@ from utils import wrap_env, load_parameters_from_config
 from test import test
 from train import train
 from model import DQN
-from agent import AtariAgent
+from agent import DQNAgent, DDQNAgent
 
 
 # Ejecutar el modo de prueba
@@ -57,7 +57,7 @@ def training(config_data):
     env = gym.make(env_name, render_mode='rgb_array')
     env = wrap_env(env)
     # Inicialización del agente
-    agent = AtariAgent(
+    agent = DQNAgent(
         device=device,
         n_actions=actions,
         lr=learning_rate,
