@@ -1,6 +1,7 @@
 import argparse
 import torch
 import gymnasium as gym
+import ale_py
 from utils import wrap_env, load_parameters_from_config
 from test import test
 from train import train
@@ -30,6 +31,7 @@ def testing(config_data, agent_type):
     else:
         raise ValueError(f"Tipo de agente no reconocido: {agent_type}")
     # Carga de entorno gymnasium
+    gym.register_envs(ale_py)
     env = gym.make(env_name, render_mode='rgb_array')
     env = wrap_env(env)
     # Carga del modelo entrenado

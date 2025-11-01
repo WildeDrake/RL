@@ -36,13 +36,13 @@ def wrap_env(env: gym.Env):
     # Loggeo de estadísticas del episodio
     env = gym.wrappers.RecordEpisodeStatistics(env)
     # Convertir observaciones a escala de grises
-    env = gym.wrappers.GrayScaleObservation(env)
+    env = gym.wrappers.GrayscaleObservation(env)
     # Reescala las observaciones a una resolución más pequeña
     env = gym.wrappers.ResizeObservation(env, (84, 84))
     # Normaliza las observaciones para tener media 0 y desviación estándar 1
     env = gym.wrappers.NormalizeObservation(env)
-    # Pila de múltiples fotogramas consecutivos para proporcionar información temporal al agente
-    env = gym.wrappers.FrameStack(env, num_stack=4)
+    # Pila de múltiples fotogramas consecutivos
+    env = gym.wrappers.FrameStackObservation(env, 4)
     return env
 
 

@@ -16,10 +16,14 @@ python -m pip install --upgrade pip setuptools wheel
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 
 # Instalar Gymnasium con soporte Atari (ALE)
-pip install gymnasium[atari,accept-rom-license]
+pip install gymnasium ale-py
 
 # Instalar utilidades comunes
 pip install numpy pillow matplotlib tensorboard tqdm opencv-python
 
 # Verificar instalaciones
-python -c "import torch, gymnasium, numpy; print('Torch:', torch.__version__, torch.version.cuda); print('Gymnasium:', gymnasium.__version__); print('Numpy:', numpy.__version__)"
+python -c "import torch, gymnasium, ale_py, numpy; `
+print('Torch:', torch.__version__, torch.version.cuda); `
+print('Gymnasium:', gymnasium.__version__); `
+print('ALE:', ale_py.__version__); `
+print('Numpy:', numpy.__version__)"
