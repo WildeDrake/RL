@@ -16,6 +16,8 @@ class ReplayMemory:
 
     # Agrega una nueva transición a la memoria de repetición.
     def push(self, state, action, reward, next_state, done):
+        # Guardamos el estado 'done' como un tensor, para mantener la consistencia de tipos.
+        done = torch.tensor([done], dtype=torch.bool)
         self.memory.append(Transition(state, action, reward, next_state, done))
 
     # Muestrea un lote de transiciones aleatorias de la memoria de repetición. batch_size define el tamaño del lote.
