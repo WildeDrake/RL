@@ -7,9 +7,12 @@ import configparser
 # Funcion para convertir observaciones a tensores de PyTorch
 def convert_observation(observation, device=None):
     # Convierte la observación a un tensor de PyTorch
-    obs = torch.from_numpy(np.array(observation)).float()
+    if isinstance(observation, torch.Tensor):
+        obs = observation
+    else:
+        obs = torch.from_numpy(np.asarray(observation, dtype=np.float32))
     # Mueve el tensor al dispositivo especificado (CPU o GPU)
-    return obs.to(device) if device else obs
+    return obs.to(device, non_blocking=True) if device else obs
 
 
 # Funcion para envolver un entorno de Gym con acciones Noop al inicio
@@ -19,7 +22,6 @@ class NoopStart(gym.Wrapper):
         super().__init__(env)
         self.noop_max = noop_max
         self.noop_action = 0
-
     # Sobrescribe el método reset para incluir acciones Noop al inicio del episodio
     def reset(self, **kwargs):
         obs, info = self.env.reset(**kwargs)
@@ -39,10 +41,10 @@ def wrap_env(env: gym.Env):
     env = gym.wrappers.GrayscaleObservation(env)
     # Reescala las observaciones a una resolución más pequeña
     env = gym.wrappers.ResizeObservation(env, (84, 84))
+    # Pila de múltiples fotogramas consecutivos (antes de normalizar para eficiencia)
+    env = gym.wrappers.FrameStackObservation(env, 4)
     # Normaliza las observaciones para tener media 0 y desviación estándar 1
     env = gym.wrappers.NormalizeObservation(env)
-    # Pila de múltiples fotogramas consecutivos
-    env = gym.wrappers.FrameStackObservation(env, 4)
     return env
 
 

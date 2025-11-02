@@ -1,9 +1,7 @@
 from torch.optim import Adam
 from typing import Optional
-import model
 from replay_memory import ReplayMemory, Transition
 from model import DQN
-import math
 import torch
 import random
 import os
@@ -27,18 +25,11 @@ class DQNAgent:
     ) -> None:
         self.n_actions = n_actions
         self.device = device
-        # Verifica si existe el archivo antes de cargarlo
-        if network_file and os.path.exists(network_file):
-            print(f"Cargando modelo desde '{network_file}'...")
-            self.policy_net = torch.load(network_file, map_location=device)
-            self.target_net = torch.load(network_file, map_location=device)
-        else:
-            if network_file:
-                print(f"No se encontró el modelo '{network_file}', se entrenará desde cero.")
-            self.policy_net = DQN(self.n_actions).to(device)
-            self.target_net = DQN(self.n_actions).to(device)
-            self.policy_net.apply(model.init_weights)
-            self.target_net.load_state_dict(self.policy_net.state_dict())
+        # Inicializa las redes (policy y target)
+        self.policy_net = DQN(n_actions).to(device)
+        self.target_net = DQN(n_actions).to(device)
+        self.target_net.load_state_dict(self.policy_net.state_dict())
+        self.target_net.eval()
         # Optimizador para la red de política.
         self.optimiser = Adam(self.policy_net.parameters(), lr=lr)
         self.steps_done = 0
@@ -50,7 +41,15 @@ class DQNAgent:
         # Inicializa la memoria de repetición.
         self.memory = ReplayMemory(capacity=total_memory)
         self.initial_memory = initial_memory
-
+        # Si hay archivo de pesos existente, cargarlo correctamente
+        if network_file and os.path.exists(network_file):
+            state_dict = torch.load(network_file, map_location=device)
+            try:
+                self.policy_net.load_state_dict(state_dict)
+                self.target_net.load_state_dict(state_dict)
+                print(f"Modelo cargado desde {network_file}")
+            except RuntimeError as e:
+                print(f"Error al cargar pesos: {e}. Se entrenará desde cero.")
     # Almacena una nueva transición en la memoria de repetición.
     def new_transition(
         self,
@@ -61,17 +60,15 @@ class DQNAgent:
         done: bool,  # Una bandera que indica si el episodio ha terminado.
     ):
         self.memory.push(
-            observation.to('cpu'),
-            action.to('cpu'),
-            reward.to('cpu'),
-            next_observation.to('cpu') if not done else None,
+            observation.to(self.device),
+            action.to(self.device),
+            reward.to(self.device),
+            next_observation.to(self.device) if not done else None,
             done
         )
-
     # Calcula el valor épsilon actual para la política épsilon-greedy.
     def epsilon(self):
         return self.epsilon_end + (self.epsilon_start - self.epsilon_end) * (1 - min(self.steps_done / self.epsilon_decay, 1))
-
     # Calcula la siguiente acción a tomar utilizando una política épsilon-greedy.
     def next_action(
         self,
@@ -97,38 +94,25 @@ class DQNAgent:
                 device=self.device,
                 dtype=torch.long,
             )
-
     # Realiza un paso de optimización de la red Q.
     def optimise(self, batch_size: int):  # batch_size: El tamaño del lote para el entrenamiento.
         # Solo comienza a optimizar una vez que haya suficientes transiciones en la memoria.
         if (len(self.memory) < self.initial_memory or len(self.memory) < batch_size):
             return 
-        # Muestrea un lote de transiciones de la memoria de repetición.
-        transitions = self.memory.sample(batch_size)
-        batch = Transition(*zip(*transitions))
-        # Crea una máscara para los estados no finales en el lote.
-        non_final_mask = torch.tensor(
-            tuple(map(lambda s: s is not None, batch.next_state)),
-            device=self.device,
-            dtype=torch.bool,
-        )
-        # Extrae los siguientes estados no finales y los convierte en un tensor.
-        non_final_next_states = torch.stack(
-            [s for s in batch.next_state if s is not None]
-        ).to(self.device)
-        # Convierte los estados, acciones y recompensas en el lote en tensores.
-        state_batch = torch.stack(batch.state).to(self.device)
-        action_batch = torch.cat(batch.action).to(self.device)
-        reward_batch = torch.cat(batch.reward).to(self.device)
+        # Muestrea un lote de transiciones de la memoria de repetición (ya en device).
+        state_batch, action_batch, reward_batch, next_state_batch, done_batch, non_final_mask = self.memory.sample(batch_size, device=self.device)
+        # Asegurar shapes esperadas para gather
+        if action_batch.dim() == 1:
+            action_batch = action_batch.unsqueeze(1)
         # Computa los valores Q predichos para los pares estado-acción en el lote.
         state_action_values = self.policy_net(state_batch).gather(1, action_batch)
         # Inicializa los valores del siguiente estado como ceros.
         next_state_values = torch.zeros(batch_size, device=self.device)
-        if any(non_final_mask):
+        if non_final_mask.any():
             with torch.no_grad():
-                next_state_values[non_final_mask] = (
-                    self.target_net(non_final_next_states).max(1)[0]
-                )
+                # next_state_batch contiene solo los next_states no finales (según la implementación de sample)
+                next_vals = self.target_net(next_state_batch).max(1)[0]
+                next_state_values[non_final_mask] = next_vals
         # Computa los valores esperados de estado-acción utilizando la ecuación de Bellman.
         expected_state_action_values = (next_state_values * self.gamma) + reward_batch
         # Computa la pérdida utilizando la pérdida de Huber (pérdida L1 suave).
@@ -138,13 +122,13 @@ class DQNAgent:
         # Computa los gradientes y realiza el recorte de gradientes.
         loss.backward()
         for param in self.policy_net.parameters():
-            param.grad.data.clamp_(-1, 1)
+            if param.grad is not None:
+                param.grad.data.clamp_(-1, 1)
         # Actualiza los parámetros de la red de política.
         self.optimiser.step()
         # Actualiza los parámetros de la red objetivo si se alcanza el intervalo de actualización del objetivo.
-        if self.steps_done % self.target_update == 1:
+        if self.steps_done % self.target_update == 0:
             self.target_net.load_state_dict(self.policy_net.state_dict())
-
 
 
 
@@ -157,29 +141,23 @@ class DDQNAgent(DQNAgent):
         # Solo comienza a optimizar una vez que haya suficientes transiciones en la memoria.
         if (len(self.memory) < self.initial_memory or len(self.memory) < batch_size):
             return 
-        # Muestrea un lote de transiciones de la memoria de repetición.
-        transitions = self.memory.sample(batch_size)
-        batch = Transition(*zip(*transitions))
-        # Crea una máscara para los estados no finales en el lote.
-        non_final_mask = torch.tensor(tuple(map(lambda s: s is not None, batch.next_state)), device=self.device, dtype=torch.bool)
-        # Extrae los siguientes estados no finales y los convierte en un tensor.
-        non_final_next_states = torch.stack([s for s in batch.next_state if s is not None]).to(self.device)
-        # Convierte los estados, acciones y recompensas en el lote en tensores.
-        state_batch = torch.stack(batch.state).to(self.device)
-        action_batch = torch.cat(batch.action).to(self.device)
-        reward_batch = torch.cat(batch.reward).to(self.device)
+        # Muestrea un lote de transiciones de la memoria de repetición (ya en device).
+        state_batch, action_batch, reward_batch, next_state_batch, done_batch, non_final_mask = self.memory.sample(batch_size, device=self.device)
+        # Asegurar shapes esperadas para gather
+        if action_batch.dim() == 1:
+            action_batch = action_batch.unsqueeze(1)
         # Computa los valores Q predichos para los pares estado-acción en el lote.
         state_action_values = self.policy_net(state_batch).gather(1, action_batch)
         # Inicializa los valores del siguiente estado como ceros.
         next_state_values = torch.zeros(batch_size, device=self.device)
-        # Actualiza los valores del siguiente estado con los valores de la red objetivo para los estados no finales.
-        with torch.no_grad():
-            # Acciones seleccionadas por la policy_net (argmax)
-            best_next_actions = self.policy_net(non_final_next_states).max(1)[1].unsqueeze(1)
-            # Evaluación de esas acciones con la target_net
-            next_state_values[non_final_mask] = (
-                self.target_net(non_final_next_states).gather(1, best_next_actions).squeeze(1)
-            )
+        if non_final_mask.any():
+            with torch.no_grad():
+                # Acciones seleccionadas por la policy_net (argmax) sobre los next states no finales
+                best_next_actions = self.policy_net(next_state_batch).max(1)[1].unsqueeze(1)
+                # Evaluación de esas acciones con la target_net
+                next_state_values[non_final_mask] = (
+                    self.target_net(next_state_batch).gather(1, best_next_actions).squeeze(1)
+                )
         # Computa los valores esperados de estado-acción utilizando la ecuación de Bellman.
         expected_state_action_values = (next_state_values * self.gamma) + reward_batch
         # Computa la pérdida utilizando la pérdida de Huber (pérdida L1 suave).
@@ -189,9 +167,10 @@ class DDQNAgent(DQNAgent):
         # Computa los gradientes y realiza el recorte de gradientes.
         loss.backward()
         for param in self.policy_net.parameters():
-            param.grad.data.clamp_(-1, 1)
+            if param.grad is not None:
+                param.grad.data.clamp_(-1, 1)
         # Actualiza los parámetros de la red de política.
         self.optimiser.step()
         # Actualiza los parámetros de la red objetivo si se alcanza el intervalo de actualización del objetivo.
-        if self.steps_done % self.target_update == 1:
+        if self.steps_done % self.target_update == 0:
             self.target_net.load_state_dict(self.policy_net.state_dict())

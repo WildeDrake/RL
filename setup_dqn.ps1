@@ -19,7 +19,8 @@ pip install --pre torch torchvision torchaudio --index-url https://download.pyto
 pip install gymnasium ale-py
 
 # Instalar utilidades comunes
-pip install numpy pillow matplotlib tensorboard tqdm opencv-python
+pip install numpy pillow matplotlib tensorboard tqdm opencv-python moviepy
+
 
 # Verificar instalaciones
 python -c "import torch, gymnasium, ale_py, numpy; `
