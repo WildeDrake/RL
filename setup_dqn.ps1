@@ -13,7 +13,7 @@ python -m venv env
 python -m pip install --upgrade pip setuptools wheel
 
 # Instalar PyTorch (CUDA 12.1 o superior)
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu128
 
 # Instalar Gymnasium con soporte Atari (ALE)
 pip install gymnasium ale-py
