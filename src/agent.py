@@ -5,6 +5,7 @@ from model import DQN
 import torch
 import random
 import os
+import numpy as np
 
 # Agente de DQN para entornos Atari.
 class DQNAgent:
@@ -54,46 +55,43 @@ class DQNAgent:
     def new_transition(
         self,
         observation: torch.Tensor,  # La observación/estado actual.
-        action: torch.Tensor,  # La acción tomada.
-        reward: torch.Tensor,  # La recompensa recibida.
-        next_observation: torch.Tensor,  # La siguiente observación/estado.
-        done: bool,  # Una bandera que indica si el episodio ha terminado.
+        action: int,                # La acción tomada como int
+        reward: torch.Tensor,       # La recompensa recibida como tensor
+        next_observation: torch.Tensor,  # La siguiente observación/estado
+        done: bool,                 # Indica si el episodio terminó
     ):
+        # Convertimos action a tensor dentro del device
+        action_t = torch.tensor([[action]], dtype=torch.long, device=self.device)
         self.memory.push(
             observation.to(self.device),
-            action.to(self.device),
+            action_t,
             reward.to(self.device),
             next_observation.to(self.device) if not done else None,
             done
         )
+        
     # Calcula el valor épsilon actual para la política épsilon-greedy.
-    def epsilon(self):
-        return self.epsilon_end + (self.epsilon_start - self.epsilon_end) * (1 - min(self.steps_done / self.epsilon_decay, 1))
-    # Calcula la siguiente acción a tomar utilizando una política épsilon-greedy.
+    def epsilon(self, episode: int):
+        ratio = min(episode / self.epsilon_decay, 1.0)
+        decay = np.exp(-5 * ratio)  
+        return self.epsilon_end + (self.epsilon_start - self.epsilon_end) * decay
+
+    # Calcula la siguiente acción a tomar utilizando una política epsilon-greedy
     def next_action(
         self,
-        observation: torch.Tensor,  # La observación/estado actual.
-        epsilon: Optional[float] = None  # El valor épsilon a utilizar para la política épsilon-greedy.
-    ) -> torch.Tensor:
-        # Si no se proporciona un valor épsilon, calcula el valor actual.
-        if epsilon is None:
-            epsilon = self.epsilon()
-        # Incrementa el contador de pasos.
+        observation: torch.Tensor,  # La observación/estado actual
+        epsilon: float               # epsilon como float
+    ) -> int:
         self.steps_done += 1
-        # Decide si tomar una acción aleatoria o la mejor acción según la política actual.
         if random.random() > epsilon:
+            # Acción greedy
             with torch.no_grad():
-                return (
-                    self.policy_net(observation.to(self.device))
-                    .max(1)[1]
-                    .view(1, 1)
-                )
-        else:  # Toma una acción aleatoria.
-            return torch.tensor(
-                [[random.randrange(self.n_actions)]],
-                device=self.device,
-                dtype=torch.long,
-            )
+                action = self.policy_net(observation.to(self.device)).max(1)[1].item()
+        else:
+            # Acción aleatoria
+            action = random.randrange(self.n_actions)
+        return action
+    
     # Realiza un paso de optimización de la red Q.
     def optimise(self, batch_size: int):  # batch_size: El tamaño del lote para el entrenamiento.
         # Solo comienza a optimizar una vez que haya suficientes transiciones en la memoria.

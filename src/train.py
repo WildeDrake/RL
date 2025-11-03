@@ -1,4 +1,3 @@
-from collections import deque
 import torch
 import gymnasium as gym
 from agent import DQNAgent, DDQNAgent
@@ -18,55 +17,66 @@ def train(env: gym.Env, agent: DQNAgent, n_episodes: int, batch_size: int, max_e
         batch_size (int): Tamaño del lote para la actualización de la red.
         max_episode_length (int): Longitud máxima de cada episodio.
     """
-    rewards = deque(maxlen=100)  # Mantiene las últimas 100 recompensas para el promedio.
-    writer = SummaryWriter('runs/frogger')  # Para visualización en TensorBoard.
+    writer = SummaryWriter('runs/'+ agent.__class__.__name__)  # Para visualización en TensorBoard.
 
     for episode in range(n_episodes):
-        # Reinicia el entorno para un nuevo episodio y convierte la observación inicial a tensor.
+        # Reinicia el entorno
         observation, _ = env.reset()
         observation = convert_observation(observation, device=agent.device)
+        total_reward = 0.0           # recompensa original
+        total_shaped_reward = 0.0    # recompensa con shaping
+        eps = agent.epsilon(episode)
 
-        # Inicializa la recompensa total del episodio.
-        total_reward = 0.0
-
+        progress = 0  # contador de avance para reward shaping
+        steps = 0
         for _ in range(max_episode_length):
-            # Selecciona la siguiente acción utilizando la política epsilon-greedy del agente.
-            with torch.no_grad():
-                action = agent.next_action(observation)
+            # Acción epsilon-greedy
+            action = agent.next_action(observation, epsilon=eps)
 
-            # Ejecuta la acción en el entorno y obtiene la siguiente observación y recompensa.
+            # Ejecuta acción en el entorno
             next_observation, reward, terminated, truncated, info = env.step(action)
             done = truncated or terminated
 
-            # Convierte la siguiente observación a tensor y mueve a GPU si aplica.
+            # Reward shaping: solo se aplica al avance
+            shaped_reward = reward
+            if reward == 1:  # avanzó un bloque
+                progress += 1
+                shaped_reward += 0.01 * progress  # bonus creciente
+            elif reward == 0:
+                progress = 0  # resetea si no avanzó
+
+            # Actualiza totales
+            total_reward += reward
+            total_shaped_reward += shaped_reward
+
+            # Convertir siguiente observación a tensor
             next_observation = convert_observation(next_observation, device=agent.device)
 
-            # Acumula la recompensa y actualiza la lista de recompensas recientes.
-            total_reward += reward
-            rewards.append(reward)
-
-            # Convierte la recompensa a tensor y almacena la transición en la memoria de repetición.
-            reward_t = torch.tensor([reward], dtype=torch.float32, device=agent.device)
+            # Almacena la transición usando **shaped_reward**
+            reward_t = torch.tensor([shaped_reward], dtype=torch.float32, device=agent.device)
             agent.new_transition(observation, action, reward_t, next_observation, done)
 
-            # Optimiza la red Q usando un lote de la memoria de repetición.
+            # Optimiza la red Q
             agent.optimise(batch_size)
 
-            # Actualiza la observación actual.
             observation = next_observation
-
-            # Si el episodio terminó, salir del bucle.
+            steps += 1
             if done:
                 break
 
-        # Calcula la recompensa promedio de los últimos 100 episodios y la loguea en TensorBoard.
-        avg_reward = sum(rewards) / len(rewards)
-        writer.add_scalar('Average Reward (100 episodes)', avg_reward, episode)
+        # Loguea en TensorBoard
+        writer.add_scalar('Recompensa Total por Episodio', total_reward, episode)
+        writer.add_scalar('Recompensa Shaped por Episodio', total_shaped_reward - total_reward, episode)
+        writer.add_scalar('Progreso por Episodio', progress, episode)
+        writer.add_scalar('Epsilon por Episodio', agent.epsilon(episode=episode), episode)
+        writer.add_scalar('Pasos por Episodio', steps, episode)
+        writer.add_scalar('GPU Memory Allocated por Episodio', torch.cuda.memory_allocated() / 1024**2, episode)
+        writer.add_scalar('GPU Memory Reserved por Episodio', torch.cuda.memory_reserved() / 1024**2, episode)
 
-        # Guardar el modelo cada 100 episodios.
-        if episode % 100 == 0 and episode > 0:
+        if episode % 500 == 0 and episode > 0:
             torch.save(agent.policy_net.state_dict(), f'in_progress_model_{episode}.pth')
-
+   
+   
     # Cierra el escritor de TensorBoard y el entorno.
     writer.close()
     env.close()

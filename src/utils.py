@@ -18,7 +18,7 @@ def convert_observation(observation, device=None):
 # Funcion para envolver un entorno de Gym con acciones Noop al inicio
 class NoopStart(gym.Wrapper):
     # Constructor de la clase NoopStart
-    def __init__(self, env: gym.Env, noop_max: int = 30) -> None:
+    def __init__(self, env: gym.Env, noop_max: int = 60) -> None:
         super().__init__(env)
         self.noop_max = noop_max
         self.noop_action = 0

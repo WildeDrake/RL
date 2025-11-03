@@ -3,7 +3,7 @@ import os
 import torch
 import gymnasium as gym
 import ale_py
-from utils import wrap_env, load_parameters_from_config
+from utils import wrap_env, load_parameters_from_config, NoopStart
 from test import test
 from train import train
 from model import DQN
@@ -26,6 +26,7 @@ def testing(config_data, agent_type, max_steps_per_episode=1000):
     # Registro del entorno Atari
     gym.register_envs(ale_py)
     env = gym.make(env_name, render_mode='rgb_array')
+    env = NoopStart(env)
     env = wrap_env(env)
     # Grabación de video opcional: solo si se especifica carpeta
     if video_folder:
@@ -96,6 +97,7 @@ def training(config_data, agent_type):
     print(f"Usando dispositivo: {device}")
     # Carga de entorno gymnasium 
     env = gym.make(env_name)
+    env = NoopStart(env)
     env = wrap_env(env)
     # Selección dinámica del agente
     if agent_type == "DDQN":
