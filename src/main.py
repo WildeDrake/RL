@@ -9,17 +9,6 @@ from train import train
 from model import DQN
 from agent import DQNAgent, DDQNAgent
 
-# Configuraciones para deshabilitar optimizaciones automáticas que pueden causar inestabilidad
-import warnings
-warnings.filterwarnings("ignore", message="Please use the new API settings to control TF32 behavior")
-os.environ["TORCH_COMPILE_DISABLE"] = "1"
-os.environ["TORCHINDUCTOR_DISABLE"] = "1"
-os.environ["TORCH_LOGS"] = "none"
-os.environ["TORCHDYNAMO_VERBOSE"] = "0"
-torch._dynamo.disable()
-if torch.cuda.is_available():
-    torch.backends.cudnn.benchmark = True
-    torch.set_float32_matmul_precision("medium")
 
 # Ejecutar el modo de prueba del agente Atari
 def testing(config_data, agent_type, max_steps_per_episode=1000):
@@ -54,8 +43,9 @@ def testing(config_data, agent_type, max_steps_per_episode=1000):
     # Carga del modelo entrenado si existe
     if os.path.exists(model_path):
         print(f"Cargando modelo desde '{model_path}'...")
-        policy_net.load_state_dict(torch.load(model_path, map_location=device))
-        policy_net.to(device)
+        state_dict = torch.load(model_path, map_location=device)
+        new_state_dict = {k.replace("_orig_mod.", ""): v for k, v in state_dict.items()}
+        policy_net.load_state_dict(new_state_dict)
     else:
         print(f"No se encontró el modelo '{model_path}', se ejecutará sin cargar pesos.")
     # Modo evaluación (sin gradientes)
@@ -113,11 +103,6 @@ def training(config_data, agent_type):
         else torch.device("cpu")
     )
     print(f"Usando dispositivo: {device}")
-    # Optimizaciones de rendimiento para GPU
-    if device.type == "cuda":
-        torch.backends.cudnn.benchmark = True
-        torch.set_float32_matmul_precision("medium")
-        print("Optimizaciones CUDA activadas (TF32 + cuDNN benchmark).")
     # Carga de entorno gymnasium 
     env = gym.make(env_name)
     env = NoopStart(env)

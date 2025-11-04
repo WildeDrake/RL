@@ -32,24 +32,11 @@ class DQNAgent:
         self.target_net = DQN(n_actions).to(device)
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.target_net.eval()
-        # Intento compilar la red (si torch.compile está disponible)
-        try:
-            # torch.compile puede acelerar el entrenamiento en PyTorch moderno
-            self.policy_net = torch.compile(self.policy_net)
-            self.target_net = torch.compile(self.target_net)
-        except Exception:
-            # Si falla, seguimos sin compilar; no rompe lógica.
-            pass
         # Optimizador para la red de política.
         # (Conservamos el nombre original 'optimiser' para compatibilidad)
         self.optimiser = Adam(self.policy_net.parameters(), lr=lr)
-        # soporte AMP solo si el dispositivo es cuda
-        self.use_amp = (self.device.type == "cuda")
-        if self.use_amp:
-            from torch.amp import GradScaler
-            self.scaler = GradScaler("cuda")
-        else:
-            self.scaler = None
+        self.use_amp = False
+        self.scaler = None
         # Variables para la política epsilon-greedy.
         self.steps_done = 0
         self.epsilon_start = epsilon_start
@@ -150,7 +137,6 @@ class DQNAgent:
             with torch.no_grad():
                 next_vals = self.target_net(next_state_batch).max(1)[0]
                 next_state_values[non_final_mask] = next_vals
-
         expected_state_action_values = (next_state_values * self.gamma) + reward_batch
         # Forward para la policy_net (posible AMP)
         if self.use_amp:
