@@ -9,6 +9,17 @@ from train import train
 from model import DQN
 from agent import DQNAgent, DDQNAgent
 
+# Configuraciones para deshabilitar optimizaciones automáticas que pueden causar inestabilidad
+import warnings
+warnings.filterwarnings("ignore", message="Please use the new API settings to control TF32 behavior")
+os.environ["TORCH_COMPILE_DISABLE"] = "1"
+os.environ["TORCHINDUCTOR_DISABLE"] = "1"
+os.environ["TORCH_LOGS"] = "none"
+os.environ["TORCHDYNAMO_VERBOSE"] = "0"
+torch._dynamo.disable()
+if torch.cuda.is_available():
+    torch.backends.cudnn.benchmark = True
+    torch.set_float32_matmul_precision("medium")
 
 # Ejecutar el modo de prueba del agente Atari
 def testing(config_data, agent_type, max_steps_per_episode=1000):
@@ -95,6 +106,18 @@ def training(config_data, agent_type):
         else torch.device("cpu")
     )
     print(f"Usando dispositivo: {device}")
+    # Cuda o MPS si está disponible, de lo contrario CPU
+    device = (
+        torch.device("cuda") if torch.cuda.is_available()
+        else torch.device("mps") if hasattr(torch, "has_mps") and torch.has_mps
+        else torch.device("cpu")
+    )
+    print(f"Usando dispositivo: {device}")
+    # Optimizaciones de rendimiento para GPU
+    if device.type == "cuda":
+        torch.backends.cudnn.benchmark = True
+        torch.set_float32_matmul_precision("medium")
+        print("Optimizaciones CUDA activadas (TF32 + cuDNN benchmark).")
     # Carga de entorno gymnasium 
     env = gym.make(env_name)
     env = NoopStart(env)

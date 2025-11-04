@@ -57,7 +57,7 @@ def train(env: gym.Env, agent: DQNAgent, n_episodes: int, batch_size: int, max_e
             agent.new_transition(observation, action, reward_t, next_observation, done)
 
             # Optimiza la red Q
-            agent.optimise(batch_size)
+            agent.optimize(batch_size)
 
             observation = next_observation
             steps += 1
