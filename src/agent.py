@@ -60,6 +60,7 @@ class DQNAgent:
         next_observation: torch.Tensor,  # La siguiente observación/estado
         done: bool,                 # Indica si el episodio terminó
     ):
+        
         # Convertimos action a tensor dentro del device
         action_t = torch.tensor([[action]], dtype=torch.long, device=self.device)
         self.memory.push(
