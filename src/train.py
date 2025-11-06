@@ -19,7 +19,8 @@ def train(env: gym.Env, agent: DQNAgent, n_episodes: int, batch_size: int, max_e
     """
     writer = SummaryWriter('runs/'+ agent.__class__.__name__)  # Para visualización en TensorBoard.
 
-    for episode in range(n_episodes):
+    start_episode = 900
+    for episode in range(start_episode, n_episodes):
         # Reinicia el entorno
         observation, _ = env.reset()
         observation = convert_observation(observation, device=agent.device)
@@ -73,7 +74,7 @@ def train(env: gym.Env, agent: DQNAgent, n_episodes: int, batch_size: int, max_e
         writer.add_scalar('GPU Memory Allocated por Episodio', torch.cuda.memory_allocated() / 1024**2, episode)
         writer.add_scalar('GPU Memory Reserved por Episodio', torch.cuda.memory_reserved() / 1024**2, episode)
 
-        if episode % 500 == 0 and episode > 0:
+        if episode % 250 == 0 and episode > 0:
             torch.save(agent.policy_net.state_dict(), f'in_progress_model_{episode}.pth')
    
    

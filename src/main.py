@@ -48,6 +48,7 @@ def testing(config_data, agent_type, max_steps_per_episode=1000):
         policy_net.load_state_dict(new_state_dict)
     else:
         print(f"No se encontró el modelo '{model_path}', se ejecutará sin cargar pesos.")
+    policy_net.to(device)
     # Modo evaluación (sin gradientes)
     policy_net.eval()
     # Ejecutar los episodios de prueba

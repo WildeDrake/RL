@@ -27,7 +27,7 @@ def test(env_name: str, agent: DQNAgent, num_episodes: int, video_folder=None,
     # --- Crear entorno real ---
     env = gym.make(env_name, render_mode="rgb_array")
     env = NoopStart(env, noop_max=30)  # 🔹 aplica aleatoriedad de inicio
-
+    
     # --- Grabar video ---
     if video_folder:
         env = gym.wrappers.RecordVideo(
@@ -39,6 +39,7 @@ def test(env_name: str, agent: DQNAgent, num_episodes: int, video_folder=None,
 
     # --- Política ---
     agent.policy_net.eval()
+    agent.policy_net.to(device)
 
     for ep in range(num_episodes):
         total_reward = 0
