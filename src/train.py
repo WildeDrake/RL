@@ -19,7 +19,7 @@ def train(env: gym.Env, agent: DQNAgent, n_episodes: int, batch_size: int, max_e
     """
     writer = SummaryWriter('runs/'+ agent.__class__.__name__)  # Para visualización en TensorBoard.
 
-    start_episode = 900
+    start_episode = 0
     for episode in range(start_episode, n_episodes):
         # Reinicia el entorno
         observation, _ = env.reset()
