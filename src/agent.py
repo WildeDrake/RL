@@ -35,14 +35,15 @@ class DQNAgent:
         # Optimizador para la red de política.
         # (Conservamos el nombre original 'optimiser' para compatibilidad)
         self.optimiser = Adam(self.policy_net.parameters(), lr=lr)
-        self.use_amp = False
-        self.scaler = None
+        # AMP
+        self.use_amp = torch.cuda.is_available()
+        self.scaler = torch.cuda.amp.GradScaler() if self.use_amp else None
         # Variables para la política epsilon-greedy.
-        self.steps_done = 0
         self.epsilon_start = epsilon_start
         self.epsilon_end = epsilon_end
         self.epsilon_decay = epsilon_decay
         self.gamma = gamma
+        self.steps_done = 0
         self.target_update = target_update
         # Inicializa la memoria de repetición.
         self.memory = ReplayMemory(capacity=total_memory, device=self.device)

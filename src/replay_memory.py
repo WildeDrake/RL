@@ -1,4 +1,5 @@
 from collections import namedtuple, deque
+import numpy as np
 import torch
 
 # Estructura para almacenar una transición (experiencia)
@@ -25,13 +26,12 @@ class ReplayMemory:
         # Guardar la transición
         self.memory.append(Transition(state, action, reward, next_state, done))
 
-
     # Muestrea un lote de transiciones aleatorias y las convierte a tensores en el dispositivo.
     def sample(self, batch_size: int, device: str = "cuda"):
         if len(self.memory) < batch_size:
             raise ValueError("La memoria no contiene suficientes transiciones para muestrear.")
         # Selección aleatoria mediante índices tensoriales
-        idx = torch.randint(0, len(self.memory), (batch_size,))
+        idx = np.random.choice(len(self.memory), batch_size, replace=False)
         batch = [self.memory[i] for i in idx]
         batch = Transition(*zip(*batch))
         # Máscara de los next_states que no son None
@@ -40,20 +40,14 @@ class ReplayMemory:
             dtype=torch.bool,
             device=device
         )
-        # Convierte listas a tensores
-        state_batch = torch.stack(batch.state).to(device, non_blocking=True)
-        action_batch = torch.cat(batch.action).to(device, non_blocking=True)
-        reward_batch = torch.cat(batch.reward).to(device, non_blocking=True)
-        done_batch = torch.cat(batch.done).to(device, non_blocking=True)
         # Stack sólo los next_states válidos
         non_final_next_states = [s for s in batch.next_state if s is not None]
         if len(non_final_next_states) > 0:
             next_state_batch = torch.stack(non_final_next_states).to(device, non_blocking=True)
         else:
-            # Si no hay ninguno (raro, pero posible), crea un tensor vacío
             next_state_batch = torch.empty((0,), dtype=torch.float32, device=device)
         # Devuelve los lotes y la máscara   
-        return state_batch, action_batch, reward_batch, next_state_batch, done_batch, non_final_mask
+        return torch.stack(batch.state).to(device, non_blocking=True), torch.cat(batch.action).to(device, non_blocking=True), torch.cat(batch.reward).to(device, non_blocking=True), next_state_batch, torch.cat(batch.done).to(device, non_blocking=True), non_final_mask
 
 
     # Devuelve la cantidad actual de transiciones almacenadas.

@@ -1,34 +1,31 @@
 import random
+import os
 import torch
 import gymnasium as gym
-from agent import DQNAgent
-from utils import convert_observation, wrap_env, NoopStart
-
-# Epsilon-greedy (greedy en test)
-def next_action(observation, agent: DQNAgent, epsilon: float = 0.0):
-    agent.steps_done += 1
-    if random.random() > epsilon:
-        with torch.no_grad():
-            obs_t = observation.to(agent.device) if torch.is_tensor(observation) else torch.tensor(
-                observation, device=agent.device, dtype=torch.float32
-            )
-            action = agent.policy_net(obs_t.unsqueeze(0)).max(1)[1].item()
-    else:
-        action = random.randrange(agent.n_actions)
-    return action
+from agent import DQN
+from utils import wrap_env, NoopStart
+import ale_py
 
 
-def test(env_name: str, agent: DQNAgent, num_episodes: int, video_folder=None,
-         device="cpu", max_steps_per_episode=1000):
-    """
-    Ejecuta la prueba de un agente entrenado y graba video fluido del entorno real.
-    """
+# Ejecutar el modo de prueba del agente Atari
+def testing(config_data, agent_type, max_steps_per_episode=2000):
+    env_name = config_data.get('env')  # Nombre del entorno
+    model_path = config_data.get('model_path')  # Ruta del modelo entrenado
+    episodes = int(config_data.get('episodes'))  # Número de episodios de prueba
+    video_folder = config_data.get('video_folder')  # Carpeta para guardar los videos
 
-    # --- Crear entorno real ---
-    env = gym.make(env_name, render_mode="rgb_array")
-    env = NoopStart(env, noop_max=30)  # 🔹 aplica aleatoriedad de inicio
-    
-    # --- Grabar video ---
+    # Cuda o MPS si está disponible, de lo contrario CPU
+    device = (
+        torch.device("cuda") if torch.cuda.is_available()
+        else torch.device("mps") if hasattr(torch, "has_mps") and torch.has_mps
+        else torch.device("cpu")
+    )
+    # Registro del entorno Atari
+    gym.register_envs(ale_py)
+    env = gym.make(env_name, render_mode='rgb_array')
+    env = NoopStart(env)
+    env = wrap_env(env)
+    # Grabación de video opcional
     if video_folder:
         env = gym.wrappers.RecordVideo(
             env,
@@ -36,28 +33,42 @@ def test(env_name: str, agent: DQNAgent, num_episodes: int, video_folder=None,
             episode_trigger=lambda ep_id: True,
             disable_logger=True
         )
-
-    # --- Política ---
-    agent.policy_net.eval()
-    agent.policy_net.to(device)
-
-    for ep in range(num_episodes):
+    # Selección del modelo según el tipo de agente
+    if agent_type == "DDQN":
+        print("Probando agente: Double DQN")
+    elif agent_type == "DQN":
+        print("Probando agente: DQN")
+        policy_net = DQN(env.action_space.n)
+    else:
+        raise ValueError(f"Tipo de agente no reconocido: {agent_type}")
+    # Carga del modelo entrenado si existe
+    if os.path.exists(model_path):
+        print(f"Cargando modelo desde '{model_path}'...")
+        state_dict = torch.load(model_path, map_location=device)
+        new_state_dict = {k.replace("_orig_mod.", ""): v for k, v in state_dict.items()}
+        policy_net.load_state_dict(new_state_dict)
+    else:
+        print(f"No se encontró el modelo '{model_path}', se ejecutará sin cargar pesos.")
+    policy_net.to(device)
+    # Modo evaluación (sin gradientes)
+    policy_net.eval()
+    # Ejecutar los episodios de prueba
+    for ep in range(episodes):
         total_reward = 0
-        obs, _ = env.reset()
-
+        observation, _ = env.reset()
         for step in range(max_steps_per_episode):
-            # Convierte la observación (sin wrappers visuales)
-            obs_proc = convert_observation(obs, device=device)
-
-            # Acción greedy
-            action = next_action(obs_proc, agent, epsilon=0.0)
-
-            obs, reward, terminated, truncated, _ = env.step(action)
+            # Convertir a tensor solo cuando se usa en la red
+            obs_t = torch.tensor(observation, dtype=torch.float32, device=device).unsqueeze(0)
+            # Selección de acción greedy
+            with torch.no_grad():
+                action = policy_net(obs_t).max(1)[1].view(1, 1)
+            # Paso en el entorno
+            observation, reward, terminated, truncated, _ = env.step(action)
             total_reward += reward
-
-            if terminated or truncated:
+            # Actualizar 
+            done = terminated or truncated
+            if done:
                 break
-
-        print(f"Episodio {ep+1}/{num_episodes} - Recompensa total: {total_reward}")
-
+        print(f"Episodio {ep+1}/{episodes} - Recompensa total: {total_reward}")
+    # Cierra el entorno al final
     env.close()
