@@ -2,7 +2,7 @@ import random
 import os
 import torch
 import gymnasium as gym
-from agent import DQN
+from agents import DQN, PPOAgent
 from utils import wrap_env, NoopStart
 import ale_py
 

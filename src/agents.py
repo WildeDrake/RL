@@ -9,22 +9,24 @@ from replayBuffer import ReplayBuffer
 from models import DQN, PPO
 
 
+
 # Agente de DQN para entornos Atari.
 class DQNAgent:
     # Inicialización del agente DQN.
     def __init__(
         self,
-        device: torch.device, # El dispositivo (CPU o GPU) en el que se ejecutará el agente.
-        n_actions: int, # El número de acciones posibles que el agente puede tomar.
-        lr: float,  # La tasa de aprendizaje para el optimizador de la red neuronal del agente.
+        device: torch.device,   # El dispositivo (CPU o GPU) en el que se ejecutará el agente.
+        n_actions: int,         # El número de acciones posibles que el agente puede tomar.
+        lr: float,              # La tasa de aprendizaje para el optimizador de la red neuronal del agente.
         epsilon_start: float,   # La tasa de exploración inicial para la política epsilon-greedy.
-        epsilon_end: float,  # La tasa de exploración final para la política epsilon-greedy.
-        epsilon_decay: float,  # La tasa a la que decae el épsilon con el tiempo.
-        total_memory: int,  # La capacidad máxima de la memoria de repetición.
-        initial_memory: int,  # La número mínimo de transiciones requeridas en la memoria de repetición antes de que comience el aprendizaje.
-        gamma: float,  # El factor de descuento para las recompensas futuras en la actualización de Q-learning.
-        target_update: int,  # La frecuencia con la que se actualiza la red objetivo.
-        network_file=None,  # Un archivo para cargar los pesos de la red pre-entrenada.
+        epsilon_end: float,     # La tasa de exploración final para la política epsilon-greedy.
+        epsilon_decay: float,   # La tasa a la que decae el épsilon con el tiempo.
+        total_memory: int,      # La capacidad máxima de la memoria de repetición.
+        initial_memory: int,    # La número mínimo de transiciones requeridas en la memoria de repetición antes de que comience el aprendizaje.
+        gamma: float,           # El factor de descuento para las recompensas futuras en la actualización de Q-learning.
+        target_update: int,     # La frecuencia con la que se actualiza la red objetivo.
+        network_file=None,      # Un archivo para cargar los pesos de la red pre-entrenada.
+        input_shape=(4, 84, 84) # La forma de la entrada para la red neuronal.
     ) -> None:
         self.n_actions = n_actions
         self.device = device
@@ -221,7 +223,7 @@ class DDQNAgent(DQNAgent):
         if self.steps_done % self.target_update == 0:
             self.target_net.load_state_dict(self.policy_net.state_dict())
 
-class agentPPO :
+class PPOAgent:
     def __init__(
         self,
         device: torch.device, # El dispositivo (CPU o GPU) en el que se ejecutará el agente.

@@ -1,28 +1,28 @@
 import torch
 import os
 import gymnasium as gym
-from agent import DQNAgent, DDQNAgent, PPOAgent
+from agents import DQNAgent, PPOAgent
 from torch.utils.tensorboard import SummaryWriter
 from utils import convert_observation, wrap_env, NoopStart
 import ale_py
 
 
 # Función principal de entrenamiento del agente Atari.
-def train_loop(env: gym.Env, agent: DQNAgent, n_episodes: int, batch_size: int, max_episode_length: int):
-    writer = SummaryWriter('runs/'+ agent.__class__.__name__) 
+def train_loop(env: gym.Env, agents: DQNAgent, n_episodes: int, batch_size: int, max_episode_length: int):
+    writer = SummaryWriter('runs/'+ agents.__class__.__name__) 
     start_episode = 0
     for episode in range(start_episode, n_episodes):
         # Reinicia el entorno
         observation, _ = env.reset()
-        observation = convert_observation(observation, device=agent.device)
+        observation = convert_observation(observation, device=agents.device)
         total_reward = 0.0           # recompensa original
-        eps = agent.epsilon(episode)
+        eps = agents.epsilon(episode)
 
         
         steps = 0
         for _ in range(max_episode_length):
             # Acción epsilon-greedy
-            action = agent.next_action(observation, epsilon=eps)
+            action = agents.next_action(observation, epsilon=eps)
 
             # Ejecuta acción en el entorno
             next_observation, reward, terminated, truncated, info = env.step(action)
@@ -32,14 +32,14 @@ def train_loop(env: gym.Env, agent: DQNAgent, n_episodes: int, batch_size: int, 
             total_reward += reward
 
             # Convertir siguiente observación a tensor
-            next_observation = convert_observation(next_observation, device=agent.device)
+            next_observation = convert_observation(next_observation, device=agents.device)
 
             # Almacena la transición
-            reward_t = torch.tensor([reward], dtype=torch.float32, device=agent.device)
-            agent.new_transition(observation, action, reward_t, next_observation, done)
+            reward_t = torch.tensor([reward], dtype=torch.float32, device=agents.device)
+            agents.new_transition(observation, action, reward_t, next_observation, done)
 
             # Optimiza la red Q
-            agent.optimize(batch_size)
+            agents.optimize(batch_size)
 
             observation = next_observation
             steps += 1
@@ -48,15 +48,15 @@ def train_loop(env: gym.Env, agent: DQNAgent, n_episodes: int, batch_size: int, 
 
         # Loguea en TensorBoard
         writer.add_scalar('Recompensa Total por Episodio', float(total_reward), episode)
-        writer.add_scalar('Epsilon por Episodio', agent.epsilon(episode=episode), episode)
+        writer.add_scalar('Epsilon por Episodio', agents.epsilon(episode=episode), episode)
         writer.add_scalar('Pasos por Episodio', steps, episode)
 
         if episode % 250 == 0 and episode > 0:
             # tipo de agente
-            makedirs = os.path.join('models', agent.__class__.__name__)
+            makedirs = os.path.join('models', agents.__class__.__name__)
             if not os.path.exists(makedirs):
                 os.makedirs(makedirs)
-            torch.save(agent.policy_net.state_dict(), os.path.join(makedirs, f'in_progress_model_{episode}.pth'))
+            torch.save(agents.policy_net.state_dict(), os.path.join(makedirs, f'in_progress_model_{episode}.pth'))
    
     # Cierra el escritor de TensorBoard y el entorno.
     writer.close()
@@ -67,13 +67,13 @@ def train_loop(env: gym.Env, agent: DQNAgent, n_episodes: int, batch_size: int, 
     writer.close()
     env.close()
 
-def PPO_train_loop(env: gym.Env, agent: DQNAgent, n_episodes: int, batch_size: int, max_episode_length: int):
-    writer = SummaryWriter('runs/'+ agent.__class__.__name__) 
+def PPO_train_loop(env: gym.Env, agents: DQNAgent, n_episodes: int, batch_size: int, max_episode_length: int):
+    writer = SummaryWriter('runs/'+ agents.__class__.__name__) 
     start_episode = 0
     for episode in range(start_episode, n_episodes):
         # Reinicia el entorno
         observation, _ = env.reset()
-        observation = convert_observation(observation, device=agent.device)
+        observation = convert_observation(observation, device=agents.device)
         total_reward = 0.0  
 
         steps = 0
@@ -112,23 +112,9 @@ def training(config_data, agent_type):
     env = NoopStart(env)
     env = wrap_env(env)
     # Selección dinámica del agente
-    if agent_type == "DDQN":
-        agent = DDQNAgent(
-            device=device,
-            n_actions=actions,
-            lr=learning_rate,
-            epsilon_start=eps_start,
-            epsilon_end=eps_end,
-            epsilon_decay=eps_decay,
-            total_memory=memory_size,
-            initial_memory=initial_memory,
-            gamma=gamma,
-            target_update=target_update,
-            network_file=model_path
-        )
-        print("Entrenando agente: Double DQN")
-    elif agent_type == "DQN":
-        agent = DQNAgent(
+    
+    if agent_type == "DQN":
+        agents = DQNAgent(
             device=device,
             n_actions=actions,
             lr=learning_rate,
@@ -143,7 +129,7 @@ def training(config_data, agent_type):
         )
         print("Entrenando agente: DQN")
     elif agent_type == "PPO":
-        agent = PPOAgent(
+        agents = PPOAgent(
             device=device,
             n_actions=actions,
             lr=learning_rate,
@@ -159,12 +145,12 @@ def training(config_data, agent_type):
         raise ValueError(f"Tipo de agente no reconocido: {agent_type}")
     print("Iniciando entrenamiento...")
     if agent_type == "PPO":
-        PPO_train_loop(env, agent, episodes, batch_size, max_episode_length)
+        PPO_train_loop(env, agents, episodes, batch_size, max_episode_length)
     else:
-        train_loop(env, agent, episodes, batch_size, max_episode_length)
+        train_loop(env, agents, episodes, batch_size, max_episode_length)
     print("Entrenamiento completado.")
     # Guardar el modelo entrenado
     print(f"Guardando modelo entrenado en '{model_path}'...")
-    torch.save(agent.policy_net.state_dict(), model_path)
+    torch.save(agents.policy_net.state_dict(), model_path)
     # Liberar memoria del entorno al terminar
     env.close()
