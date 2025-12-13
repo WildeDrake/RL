@@ -1,11 +1,12 @@
 import torch
 from torch.optim import Adam
 from torch.nn.utils import clip_grad_norm_
-from replayBuffer import ReplayBuffer
-from model import DQN, PPO
 import random
 import os
 import numpy as np
+
+from replayBuffer import ReplayBuffer
+from model import DQN, PPO
 
 
 # Agente de DQN para entornos Atari.

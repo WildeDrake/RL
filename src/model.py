@@ -2,6 +2,7 @@ import torch.nn as nn
 import torch
 
 
+
 # Inicialización de pesos para las capas lineales y convolucionales.
 def init_weights(m):
     if isinstance(m, (nn.Linear, nn.Conv2d)):
@@ -9,6 +10,7 @@ def init_weights(m):
         torch.nn.init.kaiming_uniform_(m.weight, nonlinearity='relu')
         if m.bias is not None:
             nn.init.constant_(m.bias, 0)
+
 
 
 # Definición de la arquitectura de la red neuronal DQN.
@@ -40,7 +42,6 @@ class DQN(nn.Module):
         # Aplica la inicialización de pesos a todas las capas.
         self.apply(init_weights)
 
-
     # Método forward que define el paso hacia adelante de la red.
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # Normalizamos la entrada dividiendo por 255.0 (float32 a uint8).
@@ -54,6 +55,9 @@ class DQN(nn.Module):
         # Retornamos la salida de la red.
         return x
 
+
+
+# Definición de la arquitectura de la red neuronal PPO.
 class PPO(nn.Module):
     def __init__(self, n_actions: int) -> None:
         super().__init__()
@@ -70,14 +74,14 @@ class PPO(nn.Module):
         self.linear_layers = nn.Sequential(
             nn.Linear(64 * 7 * 7, 512), nn.ReLU()
         )
-        # Capa para la política (acciones)
+        # Capa para la política (acciones).
         self.policy_head = nn.Linear(512, n_actions)
-        # Capa para el valor (critic)
+        # Capa para el valor (critic).
         self.value_head = nn.Linear(512, 1)
         # Aplica la inicialización de pesos a todas las capas.
         self.apply(init_weights)
 
-    def forward(self, x: torch.Tensor) -> (torch.Tensor, torch.Tensor):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         # Normaliza la entrada escalándola a [0, 1].
         x = x.float() / 255
         # Pasa la entrada a través de las capas convolucionales.
@@ -86,7 +90,7 @@ class PPO(nn.Module):
         x = x.view(-1, 64 * 7 * 7)
         # Pasar la salida aplanada a través de las capas lineales.
         x = self.linear_layers(x)
-        # Obtener la política y el valor
+        # Obtener la política y el valor.
         policy = self.policy_head(x)
         value = self.value_head(x)
         return policy, value
