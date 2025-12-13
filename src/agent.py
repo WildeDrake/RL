@@ -6,7 +6,7 @@ import os
 import numpy as np
 
 from replayBuffer import ReplayBuffer
-from model import DQN, PPO
+from models import DQN, PPO
 
 
 # Agente de DQN para entornos Atari.
@@ -254,7 +254,7 @@ class agentPPO :
         self.c1 = c1
         self.target_update = target_update
         # Inicializa la memoria de repetición.
-        self.memory = ReplayMemory(capacity=total_memory, device=self.device)
+        self.memory = ReplayBuffer(capacity=total_memory, device=self.device)
         self.initial_memory = initial_memory
         # Si hay archivo de pesos existente, cargarlo correctamente
         if network_file and os.path.exists(network_file):
