@@ -1,7 +1,7 @@
 import torch
 import os
 import gymnasium as gym
-from agent import DQNAgent, DDQNAgent
+from agent import DQNAgent, DDQNAgent, PPOAgent
 from torch.utils.tensorboard import SummaryWriter
 from utils import convert_observation, wrap_env, NoopStart
 import ale_py
@@ -67,6 +67,21 @@ def train_loop(env: gym.Env, agent: DQNAgent, n_episodes: int, batch_size: int, 
     writer.close()
     env.close()
 
+def PPO_train_loop(env: gym.Env, agent: DQNAgent, n_episodes: int, batch_size: int, max_episode_length: int):
+    writer = SummaryWriter('runs/'+ agent.__class__.__name__) 
+    start_episode = 0
+    for episode in range(start_episode, n_episodes):
+        # Reinicia el entorno
+        observation, _ = env.reset()
+        observation = convert_observation(observation, device=agent.device)
+        total_reward = 0.0  
+
+        steps = 0
+        for _ in range(max_episode_length):
+            
+            1+1
+
+
 
 def training(config_data, agent_type):
     # Cargar parámetros de configuración
@@ -127,10 +142,26 @@ def training(config_data, agent_type):
             network_file=model_path
         )
         print("Entrenando agente: DQN")
+    elif agent_type == "PPO":
+        agent = PPOAgent(
+            device=device,
+            n_actions=actions,
+            lr=learning_rate,
+            clippping_epsilon=0.2,
+            total_memory=memory_size,
+            initial_memory=initial_memory,
+            gamma=gamma,
+            target_update=target_update,
+            network_file=model_path
+        )
+        print("Entrenando agente: PPO")
     else:
         raise ValueError(f"Tipo de agente no reconocido: {agent_type}")
     print("Iniciando entrenamiento...")
-    train_loop(env, agent, episodes, batch_size, max_episode_length)
+    if agent_type == "PPO":
+        PPO_train_loop(env, agent, episodes, batch_size, max_episode_length)
+    else:
+        train_loop(env, agent, episodes, batch_size, max_episode_length)
     print("Entrenamiento completado.")
     # Guardar el modelo entrenado
     print(f"Guardando modelo entrenado en '{model_path}'...")

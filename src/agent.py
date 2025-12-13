@@ -2,7 +2,7 @@ import torch
 from torch.optim import Adam
 from torch.nn.utils import clip_grad_norm_
 from replayBuffer import ReplayBuffer
-from model import DQN
+from model import DQN, PPO
 import random
 import os
 import numpy as np
@@ -219,3 +219,71 @@ class DDQNAgent(DQNAgent):
         # Actualiza los parámetros de la red objetivo si se alcanza el intervalo de actualización del objetivo.
         if self.steps_done % self.target_update == 0:
             self.target_net.load_state_dict(self.policy_net.state_dict())
+
+class agentPPO :
+    def __init__(
+        self,
+        device: torch.device, # El dispositivo (CPU o GPU) en el que se ejecutará el agente.
+        n_actions: int, # El número de acciones posibles que el agente puede tomar.
+        lr: float,  # La tasa de aprendizaje para el optimizador de la red neuronal del agente.
+        clippping_epsilon: float,  # El valor de epsilon para el recorte en PPO.
+        total_memory: int,  # La capacidad máxima de la memoria de repetición.
+        initial_memory: int,  # La número mínimo de transiciones requeridas en la memoria de repetición antes de que comience el aprendizaje.
+        gamma: float,  # El factor de descuento para las recompensas futuras en la actualización de Q-learning.
+        c1: float,  # Coeficiente para el término de pérdida del valor.
+        target_update: int,  # La frecuencia con la que se actualiza la red objetivo.
+        network_file=None,  # Un archivo para cargar los pesos de la red pre-entrenada.
+    ) -> None:
+        self.n_actions = n_actions
+        self.device = device
+        # Inicializa las redes (policy y target)
+        self.policy_net = PPO(n_actions).to(device)
+        self.target_net = PPO(n_actions).to(device)
+        self.target_net.load_state_dict(self.policy_net.state_dict())
+        self.target_net.eval()
+        # Optimizador para la red de política.
+        # (Conservamos el nombre original 'optimiser' para compatibilidad)
+        self.optimiser = Adam(self.policy_net.parameters(), lr=lr)
+        self.use_amp = False
+        self.scaler = None
+        # Variables para el calculo de la pérdida PPO.
+        self.steps_done = 0
+        self.clippping_epsilon = clippping_epsilon
+        self.gamma = gamma
+        self.c1 = c1
+        self.target_update = target_update
+        # Inicializa la memoria de repetición.
+        self.memory = ReplayMemory(capacity=total_memory, device=self.device)
+        self.initial_memory = initial_memory
+        # Si hay archivo de pesos existente, cargarlo correctamente
+        if network_file and os.path.exists(network_file):
+            state_dict = torch.load(network_file, map_location=device)
+            try:
+                self.policy_net.load_state_dict(state_dict)
+                self.target_net.load_state_dict(state_dict)
+                print(f"Modelo cargado desde {network_file}")
+            except RuntimeError as e:
+                print(f"Error al cargar pesos: {e}. Se entrenará desde cero.")
+
+    def next_action(
+        self,
+        observation: torch.Tensor,  # La observación/estado actual
+        epsilon: float               # epsilon como float
+    ) -> int:
+        self.steps_done += 1
+        if random.random() > epsilon:
+            # Acción greedy
+            with torch.no_grad():
+                # asegurar shape (si la obs viene sin batch dim)
+                obs = observation.to(self.device, dtype=torch.float32)
+                # Si la red espera un batch y recibimos (C,H,W), añadimos dim 0
+                if obs.dim() == 3:
+                    obs = obs.unsqueeze(0)  # (1, C, H, W)
+                # Forward pass (GPU si corresponde)
+                logits = self.policy_net(obs)
+                action_probs = torch.softmax(logits, dim=1)
+                action = action_probs.multinomial(num_samples=1).item()
+        else:
+            # Acción aleatoria
+            action = random.randrange(self.n_actions)
+        return action
