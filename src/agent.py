@@ -1,7 +1,7 @@
 import torch
 from torch.optim import Adam
 from torch.nn.utils import clip_grad_norm_
-from replay_memory import ReplayMemory, Transition
+from replayBuffer import ReplayBuffer
 from model import DQN
 import random
 import os
@@ -46,7 +46,7 @@ class DQNAgent:
         self.steps_done = 0
         self.target_update = target_update
         # Inicializa la memoria de repetición.
-        self.memory = ReplayMemory(capacity=total_memory, device=self.device)
+        self.memory = ReplayBuffer(capacity=total_memory, device=self.device)
         self.initial_memory = initial_memory
         # Si hay archivo de pesos existente, cargarlo correctamente
         if network_file and os.path.exists(network_file):
