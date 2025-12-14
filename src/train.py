@@ -3,7 +3,7 @@ import os
 import gymnasium as gym
 from agents import DQNAgent, PPOAgent
 from torch.utils.tensorboard import SummaryWriter
-from utils import convert_observation, wrap_env, NoopStart
+from utils import convert_observation, make_dqn_env, make_ppo_env
 import ale_py
 
 
@@ -108,9 +108,7 @@ def training(config_data, agent_type):
     print(f"Usando dispositivo: {device}")
     # Carga de entorno gymnasium 
     gym.register_envs(ale_py)
-    env = gym.make(env_name, render_mode="rgb_array")
-    env = NoopStart(env)
-    env = wrap_env(env)
+    env = make_dqn_env
     # Selección dinámica del agente
     
     if agent_type == "DQN":

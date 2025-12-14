@@ -118,7 +118,6 @@ class DQNAgent:
                 next_state_values[non_final_mask] = self.target_net(next_state_batch).max(1)[0]
         # Calculo del valor esperado de la accion.
         expected_state_action_values = (next_state_values * self.gamma) + reward_batch
-
         # Definimos la funcion de calculo para no repetir codigo en el if/else del AMP.
         def compute_loss():
             # Calcula los valores Q actuales para las acciones tomadas.
@@ -127,7 +126,6 @@ class DQNAgent:
             # Huber Loss (SmoothL1).
             loss = torch.nn.functional.smooth_l1_loss(state_action_values, expected_state_action_values.unsqueeze(1))
             return loss
-        
         # Optimizacion del modelo.
         self.optimizer.zero_grad(set_to_none=True) # set_to_none es un poco mas rapido.
         # Usar AMP si esta habilitado.
@@ -199,6 +197,9 @@ class DDQNAgent(DQNAgent):
         if self.steps_done % self.target_update == 0:
             self.target_net.load_state_dict(self.policy_net.state_dict())
 
+
+
+# Agente PPO para entornos Atari.
 class PPOAgent:
     def __init__(
         self,

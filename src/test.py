@@ -3,7 +3,7 @@ import os
 import torch
 import gymnasium as gym
 from agents import DQN, PPOAgent
-from utils import wrap_env, NoopStart
+from utils import make_dqn_env, make_ppo_env
 import ale_py
 
 
@@ -22,9 +22,7 @@ def testing(config_data, agent_type, max_steps_per_episode=2000):
     )
     # Registro del entorno Atari
     gym.register_envs(ale_py)
-    env = gym.make(env_name, render_mode='rgb_array')
-    env = NoopStart(env)
-    env = wrap_env(env)
+    env = make_dqn_env(env_name)
     # Grabación de video opcional
     if video_folder:
         env = gym.wrappers.RecordVideo(
