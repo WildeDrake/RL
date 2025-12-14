@@ -54,3 +54,44 @@ class ReplayBuffer:
     # Retorna el tamaño actual del buffer.
     def __len__(self):
         return self.size
+
+class PPOBuffer: # En PPO difiere un poco el buffer: solo guarda la experiencia inmediata hecha por la política reciente
+    def __init__(self):
+        self.states = []
+        self.actions = []
+        self.rewards = []
+        self.size = 0
+        self.values = [] # Valor estimado por el crítico
+        self.log_probs = [] # Probabilidades logaritmicas
+        self.dones = [] # Indicador de finalización episodio
+    
+    def push(self, state,action,reward,value,log_prob,done):
+        self.states.append(state)
+        self.actions.append(action)
+        self.rewards.append(reward)
+        self.values.append(value)
+        self.log_probs.append(log_prob)
+        self.dones.append(done)
+        self.size += 1
+    
+    def clear(self):
+        self.states = []
+        self.actions = []
+        self.rewards = []
+        self.values = []
+        self.log_probs = []
+        self.dones = []
+        self.size = 0
+    
+    def __len__(self):
+        return self.size
+        
+    def sample(self): # No sé (?)
+        batch_states = torch.as_tensor(np.array(self.states), dtype=torch.float32)
+        batch_actions = torch.as_tensor(np.array(self.actions), dtype=torch.int64).unsqueeze(1)
+        batch_rewards = torch.as_tensor(np.array(self.rewards), dtype=torch.float32)
+        batch_values = torch.as_tensor(np.array(self.values), dtype=torch.float32).unsqueeze(1)
+        batch_log_probs = torch.as_tensor(np.array(self.log_probs), dtype=torch.float32).unsqueeze(1)
+        batch_dones = torch.as_tensor(np.array(self.dones), dtype=torch.bool)
+        non_final_mask = ~batch_dones
+        return batch_states, batch_actions, batch_rewards, batch_values, batch_log_probs, batch_dones, non_final_mask
