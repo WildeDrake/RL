@@ -59,7 +59,7 @@ class NoopStart(gym.Wrapper):
 # Funcion para envolver un entorno con varias transformaciones para DQN.
 def make_dqn_env(env_name: str, render_mode="rgb_array") -> gym.Env: 
     # Crear el entorno base.
-    env = gym.make(env_name, render_mode=render_mode)
+    env = gym.make(env_name, render_mode=render_mode, frameskip=1, repeat_action_probability=0.0)
     # Loggeo de estadísticas del episodio.
     env = gym.wrappers.RecordEpisodeStatistics(env)
     # Acciones Noop al inicio del episodio.
@@ -78,7 +78,7 @@ def make_dqn_env(env_name: str, render_mode="rgb_array") -> gym.Env:
 
 def make_ppo_env(env_name: str, seed: int, render_mode="rgb_array") -> gym.Env: 
     # Crear entorno base.
-    env = gym.make(env_name, render_mode=render_mode)
+    env = gym.make(env_name, render_mode=render_mode, frameskip=1, repeat_action_probability=0.0)
     # Loggeo de estadísticas del episodio.
     env = gym.wrappers.RecordEpisodeStatistics(env)
     # Acciones Noop al inicio del episodio.
