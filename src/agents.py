@@ -222,6 +222,27 @@ class PPOAgent:
             except RuntimeError as e:
                 print(f"Error al cargar pesos: {e}. Se entrenara desde cero.")
         self.input_shape = input_shape
+
+    def GAE(self, rewards, masks, values, next_value, gamma=0.99, tau=0.9): # Sirve para calcular las ventajas generalizadas del buffer
+        values = values + [next_value]
+        gae = 0
+        ventajas = []
+        for step in reversed(range(len(rewards))): # Recomiendan hacerlo para atrás
+            # Conseguimos el error de Temporal Difference del step (delta)
+            delta = rewards[step] + gamma * values[step + 1] * masks[step] - values[step]
+            # Calcular GAE: Una suma ponderada de los deltas futuros.
+            gae = delta + gamma * tau * masks[step] * gae
+            ventajas.insert(0, gae + values[step])
+        # Convertir a tensores
+        ventajas = torch.tensor(ventajas, device=self.device, dtype=torch.float32) #TODO: molestar con float32.
+        tvalores = torch.tensor(values, device=self.device, dtype=torch.float32) # Tensor de valores
+        returns = ventajas - tvalores
+
+        #Normalización??
+        ventajas = (ventajas - ventajas.mean()) / (ventajas.std() + 1e-8)
+
+        return ventajas, returns
+    
     def next_action(
         self,
         observation: torch.Tensor,  # La observacion/estado actual
@@ -237,10 +258,25 @@ class PPOAgent:
                 if obs.dim() == 3:
                     obs = obs.unsqueeze(0)  # (1, C, H, W)
                 # Forward pass (GPU si corresponde)
-                logits = self.policy_net(obs)
+                logits, value = self.policy_net(obs)
                 action_probs = torch.softmax(logits, dim=1)
                 action = action_probs.multinomial(num_samples=1).item()
         else:
             # Accion aleatoria
             action = random.randrange(self.n_actions)
         return action
+    
+    def optimize(self, batch_size: int): #  AAAAAAAAAAAAAAA EL DIABLO
+        # Solo comienza a optimizar una vez que haya suficientes transiciones en la memoria de repeticion.
+        if len(self.memory) < self.initial_memory or len(self.memory) < batch_size:
+            return
+        # Muestrea un lote de transiciones de la memoria de repeticion (ya en device).
+        state_batch, action_batch, reward_batch, next_state_batch, done_batch, non_final_mask = self.memory.sample(batch_size)
+        # Calculo del Target (Red Objetivo).
+        next_state_values = torch.zeros(batch_size, device=self.device)
+        # Solo calculamos Q para los estados no finales.
+        if non_final_mask.any():
+                with torch.no_grad():
+                    # Obtener los valores maximos de Q para los siguientes estados desde la red objetivo.
+                    non_final_next_states = next_state_batch[non_final_mask]
+                    next_state_values[non_final_mask] = self.target_net(non_final_next_states).max(1)[0]
