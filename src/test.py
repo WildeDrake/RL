@@ -9,7 +9,7 @@ from utils import make_dqn_env, make_ppo_env
 
 
 
-# Función de test para el agente DQN.
+# Funcion de test para el agente DQN.
 def testDQN(episodes, max_steps_per_episode, env, policy_net, device):
     # Ejecutar los episodios de prueba.
     for ep in range(episodes):
@@ -20,10 +20,10 @@ def testDQN(episodes, max_steps_per_episode, env, policy_net, device):
             # Convertir a tensor solo cuando se usa en la red.
             obs_array = np.array(observation, copy=True)
             obs_t = torch.tensor(observation, dtype=torch.float32, device=device).unsqueeze(0)
-            # Agregar dimensión de batch (C, H, W) -> (1, C, H, W).
+            # Agregar dimension de batch (C, H, W) -> (1, C, H, W).
             if obs_t.dim() == 3:
                 obs_t = obs_t.unsqueeze(0)
-            # Selección de acción greedy.
+            # Seleccion de accion greedy.
             with torch.no_grad():
                 q_values = policy_net(obs_t)
                 action = q_values.argmax(dim=1).item()
@@ -37,13 +37,13 @@ def testDQN(episodes, max_steps_per_episode, env, policy_net, device):
 
 
 
-# Función de test para el agente PPO.
+# Funcion de test para el agente PPO.
 def testPPO(episodes, max_steps_per_episode, env, policy_net, device):
     pass
 
 
 
-# Función de test para el agente RainbowDQN.
+# Funcion de test para el agente RainbowDQN.
 def testRainbowDQN(episodes, max_steps_per_episode, env, policy_net, device):
     pass
 
@@ -54,9 +54,9 @@ def test(config_data, agent_type):
     env_name = config_data.get('env')                                       # Nombre del entorno
     model_path = config_data.get('model_path')                              # Ruta del modelo entrenado
     video_folder = config_data.get('video_folder')                          # Carpeta para guardar los videos
-    episodes = int(config_data.get('episodes'))                             # Número de episodios de prueba
-    max_steps_per_episode = int(config_data.get('max_steps_per_episode'))   # Longitud máxima de un episodio de prueba
-    # Cuda o MPS si está disponible, de lo contrario CPU.
+    episodes = int(config_data.get('episodes'))                             # Numero de episodios de prueba
+    max_steps_per_episode = int(config_data.get('max_steps_per_episode'))   # Longitud maxima de un episodio de prueba
+    # Cuda o MPS si esta disponible, de lo contrario CPU.
     if torch.cuda.is_available():
         device = torch.device("cuda")
     elif torch.backends.mps.is_available():
@@ -65,7 +65,7 @@ def test(config_data, agent_type):
         device = torch.device("cpu")
     # Registro del entorno Atari.
     gym.register_envs(ale_py)
-    # Grabación de video opcional.
+    # Grabacion de video opcional.
     if video_folder:
         os.makedirs(video_folder, exist_ok=True)
         env = gym.wrappers.RecordVideo(
@@ -74,7 +74,7 @@ def test(config_data, agent_type):
             episode_trigger=lambda ep_id: True,
             disable_logger=True
         )
-    # Selección del modelo según el tipo de agente.
+    # Seleccion del modelo segun el tipo de agente.
     if agent_type == "DQN":
         print("Probando agente: DQN")
         env = make_dqn_env(env_name)
@@ -97,10 +97,10 @@ def test(config_data, agent_type):
         new_state_dict = {k.replace("_orig_mod.", ""): v for k, v in state_dict.items()}
         policy_net.load_state_dict(new_state_dict)
     else:
-        print(f"No se encontró el modelo '{model_path}', se ejecutará sin cargar pesos.")
-    # Modo evaluación (sin gradientes).
+        print(f"No se encontro el modelo '{model_path}', se ejecutara sin cargar pesos.")
+    # Modo evaluacion (sin gradientes).
     policy_net.eval()
-    # test del agente según el tipo.
+    # test del agente segun el tipo.
     if agent_type == "DQN":
         testDQN(episodes, max_steps_per_episode, env, policy_net, device)
     elif agent_type == "PPO":

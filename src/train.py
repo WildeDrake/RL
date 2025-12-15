@@ -7,8 +7,9 @@ from utils import make_dqn_env, make_ppo_env
 from trainingLoops import DQN_train_loop, PPO_train_loop
 
 
+
 def train(config_data, agent_type):
-    # Cargar parámetros de configuración
+    # Cargar parametros de configuracion
     env_name = config_data.get('env')                                   # Nombre del entorno.
     actions = int(config_data.get('actions'))                           # Número de acciones posibles.
     eps_start = float(config_data.get('eps_start'))                     # Valor inicial de epsilon.
@@ -18,13 +19,13 @@ def train(config_data, agent_type):
     learning_rate = float(config_data.get('learning_rate'))             # Tasa de aprendizaje.
     initial_memory = int(config_data.get('initial_memory'))             # Memoria inicial antes de entrenar.
     gamma = float(config_data.get('gamma'))                             # Factor de descuento.
-    target_update = int(config_data.get('target_update'))               # Frecuencia de actualización de la red objetivo.
+    target_update = int(config_data.get('target_update'))               # Frecuencia de actualizacion de la red objetivo.
     batch_size = int(config_data.get('batch_size'))                     # Tamaño del lote para el entrenamiento.
     model_path = config_data.get('model_path')                          # Ruta para guardar el modelo entrenado.
     episodes = int(config_data.get('episodes'))                         # Número de episodios.
-    max_episode_length = int(config_data.get('max_episode_length'))     # Longitud máxima de un episodio.
+    max_episode_length = int(config_data.get('max_episode_length'))     # Longitud maxima de un episodio.
     save_model_interval = int(config_data.get('save_model_interval'))   # Intervalo para guardar el modelo.
-    # Cuda o MPS si está disponible, de lo contrario CPU.
+    # Cuda o MPS si esta disponible, de lo contrario CPU.
     if torch.cuda.is_available():
         device = torch.device("cuda")
     elif torch.backends.mps.is_available():
@@ -36,7 +37,7 @@ def train(config_data, agent_type):
     gym.register_envs(ale_py)
     # Obtener la forma de la entrada del entorno.
     input_shape = env.observation_space.shape
-    # Selección dinámica del agente.
+    # Seleccion dinamica del agente.
     if agent_type == "DQN":
         env = make_dqn_env(env_name)
         agent = DQNAgent(

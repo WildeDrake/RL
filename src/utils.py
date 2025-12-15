@@ -1,4 +1,3 @@
-import torch
 import numpy as np
 import gymnasium as gym
 import configparser
@@ -36,7 +35,7 @@ def make_dqn_env(env_name: str, render_mode="rgb_array") -> gym.Env:
     env = gym.wrappers.GrayscaleObservation(env)
     # Reescala las observaciones a una resolucion mas pequeña.
     env = gym.wrappers.ResizeObservation(env, (84, 84))
-    # Pila de multiples fotogramas consecutivos (antes de normalizar para eficiencia).
+    # Pila de multiples fotogramas consecutivos.
     env = gym.wrappers.FrameStackObservation(env, 4)
     return env
 

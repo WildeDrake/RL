@@ -42,6 +42,7 @@ class DQN(nn.Module):
         # Aplica la inicializacion de pesos a todas las capas.
         self.apply(init_weights)
 
+
     # Metodo forward que define el paso hacia adelante de la red.
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # Normalizamos la entrada dividiendo por 255.0 (float32 a uint8).
@@ -80,6 +81,7 @@ class PPO(nn.Module):
         self.value_head = nn.Linear(512, 1)
         # Aplica la inicializacion de pesos a todas las capas.
         self.apply(init_weights)
+
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # Normaliza la entrada escalandola a [0, 1].

@@ -56,15 +56,18 @@ class ReplayBuffer:
     def __len__(self):
         return self.size
 
-class PPOBuffer: # En PPO difiere un poco el buffer: solo guarda la experiencia inmediata hecha por la politica reciente
+
+
+# En PPO difiere un poco el buffer: solo guarda la experiencia inmediata hecha por la politica reciente.
+class PPOBuffer: 
     def __init__(self):
         self.states = []
         self.actions = []
         self.rewards = []
         self.size = 0
-        self.values = [] # Valor estimado por el critico
-        self.log_probs = [] # Probabilidades logaritmicas
-        self.dones = [] # Indicador de finalizacion episodio
+        self.values = [] # Valor estimado por el critico.
+        self.log_probs = [] # Probabilidades logaritmicas.
+        self.dones = [] # Indicador de finalizacion episodio.
     
     def push(self, state,action,reward,value,log_prob,done):
         self.states.append(state)
