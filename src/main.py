@@ -9,26 +9,19 @@ from train import train
 def main():
     # Parsear argumentos de línea de comandos
     parser = argparse.ArgumentParser()
-    parser.add_argument('mode', choices=['Training', 'Testing'], help='Training or Testing')
+    parser.add_argument('--mode', choices=['Training', 'Testing'], help='Training or Testing')
     parser.add_argument('--config', '-c', help='INI configuration file', required=True)
-    parser.add_argument('--agent', '-a', help='Tipo de agente (DQN, DDQN, PPO, etc.)', default='DQN')
     args = parser.parse_args()
     # Cargar parámetros desde el archivo de configuración
     config_data = load_parameters_from_config(args.config, args.mode)
-    # Validar parametros minimos segun el modo
-    required_keys = (
-        ["env", "actions", "learning_rate", "episodes"]
-        if args.mode == "Training"
-        else ["env", "model_path", "episodes", "video_folder"]
-    )
-    for key in required_keys:
-        if key not in config_data:
-            raise ValueError(f"Missing required parameter '{key}' for mode '{args.mode}' in config file.")
+    # Determinar el tipo de agente
+    agent_type = config_data.get('agent')
     # Ejecutar el modo correspondiente
     if args.mode == 'Training':
-        train(config_data, args.agent.upper())
+        train(config_data, agent_type.upper())
     else:
-        test(config_data, args.agent.upper())
+        test(config_data, agent_type.upper())
+
 
 
 if __name__ == '__main__':
