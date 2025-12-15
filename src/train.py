@@ -11,7 +11,6 @@ from trainingLoops import DQN_train_loop, PPO_train_loop
 def train(config_data, agent_type):
     # Cargar parametros de configuracion
     env_name = config_data.get('env')                                   # Nombre del entorno.
-    actions = int(config_data.get('actions'))                           # Número de acciones posibles.
     eps_start = float(config_data.get('eps_start'))                     # Valor inicial de epsilon.
     eps_end = float(config_data.get('eps_end'))                         # Valor final de epsilon.
     eps_decay = float(config_data.get('eps_decay'))                     # Tasa de decaimiento de epsilon.
@@ -35,14 +34,13 @@ def train(config_data, agent_type):
     print(f"Usando dispositivo: {device}")
     # Registro del entorno Atari.
     gym.register_envs(ale_py)
-    # Obtener la forma de la entrada del entorno.
-    input_shape = env.observation_space.shape
     # Seleccion dinamica del agente.
     if agent_type == "DQN":
         env = make_dqn_env(env_name)
+        # Obtener la forma de la entrada del entorno.
         agent = DQNAgent(
             device=device,
-            n_actions=actions,
+            n_actions=env.action_space.n,
             lr=learning_rate,
             epsilon_start=eps_start,
             epsilon_end=eps_end,
@@ -52,15 +50,16 @@ def train(config_data, agent_type):
             gamma=gamma,
             target_update=target_update,
             network_file=model_path,
-            input_shape=input_shape
+            input_shape=env.observation_space.shape
         )
         DQN_train_loop(env, agent, episodes, batch_size, max_episode_length, save_model_interval)
         print("Entrenando agente DQN")
     elif agent_type == "PPO":
         env = make_ppo_env(env_name, seed=42)
+        # Obtener la forma de la entrada del entorno.
         agent = PPOAgent(
             device=device,
-            n_actions=actions,
+            n_actions=env.action_space.n,
             lr=learning_rate,
             clippping_epsilon=0.2,
             total_memory=memory_size,
@@ -68,7 +67,7 @@ def train(config_data, agent_type):
             gamma=gamma,
             target_update=target_update,
             network_file=model_path,
-            input_shape=input_shape
+            input_shape=env.observation_space.shape
         )
         PPO_train_loop(env, agent, episodes, batch_size, max_episode_length)
         print("Entrenando agente PPO")

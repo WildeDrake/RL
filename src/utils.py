@@ -4,6 +4,39 @@ import configparser
 
 
 
+# Clase para envolver un entorno de Gym y aplicar Max pooling y Skipframes.
+class MaxAndSkipEnv(gym.Wrapper):
+
+    # Constructor de la clase MaxAndSkipEnv.
+    def __init__(self, env, skip=4):
+        super().__init__(env)
+        self._skip = skip
+
+    # Sobrescribe el metodo step para aplicar Skipframes y Max pooling.
+    def step(self, action):
+        total_reward = 0.0
+        done = False
+        truncated = False
+        info = {}
+        # Buffer para guardar los ultimos 2 frames (para el Max pooling).
+        obs_buffer = np.zeros((2, *self.env.observation_space.shape), dtype=np.uint8)
+        # Ejecuta la accion durante skip frames.
+        for i in range(self._skip):
+            obs, reward, terminated, truncated, info = self.env.step(action)
+            done = terminated or truncated
+            # Guarda los ultimos 2 frames en el buffer.
+            if i == self._skip - 2: obs_buffer[0] = obs
+            if i == self._skip - 1: obs_buffer[1] = obs
+            # Acumula la recompensa total.
+            total_reward += reward
+            if done:
+                break
+        # Toma el pixel mas brillante de los ultimos 2 frames.
+        max_frame = obs_buffer.max(axis=0)
+        return max_frame, total_reward, terminated, truncated, info
+    
+
+
 # Funcion para envolver un entorno de Gym con acciones Noop al inicio.
 class NoopStart(gym.Wrapper):
     # Constructor de la clase NoopStart.
@@ -31,6 +64,8 @@ def make_dqn_env(env_name: str, render_mode="rgb_array") -> gym.Env:
     env = gym.wrappers.RecordEpisodeStatistics(env)
     # Acciones Noop al inicio del episodio.
     env = NoopStart(env, noop_max=30)
+    # Max pooling y Skipframes.
+    env = MaxAndSkipEnv(env, skip=4)
     # Convertir observaciones a escala de grises.
     env = gym.wrappers.GrayscaleObservation(env)
     # Reescala las observaciones a una resolucion mas pequeña.
@@ -48,6 +83,8 @@ def make_ppo_env(env_name: str, seed: int, render_mode="rgb_array") -> gym.Env:
     env = gym.wrappers.RecordEpisodeStatistics(env)
     # Acciones Noop al inicio del episodio.
     env = NoopStart(env, noop_max=30)
+    # Max pooling y Skipframes.
+    env = MaxAndSkipEnv(env, skip=4)
     # Convertir observaciones a escala de grises.
     env = gym.wrappers.GrayscaleObservation(env)
     # Reescala las observaciones a una resolucion mas pequeña.

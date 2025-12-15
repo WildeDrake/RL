@@ -39,7 +39,7 @@ class DQNAgent:
         self.optimizer = Adam(self.policy_net.parameters(), lr=lr)
         # AMP.
         self.use_amp = torch.cuda.is_available() and device.type == 'cuda'
-        self.scaler = torch.cuda.amp.GradScaler() if self.use_amp else None
+        self.scaler = torch.amp.GradScaler('cuda') if self.use_amp else None
         # Variables para la politica epsilon-greedy.
         self.epsilon_start = epsilon_start
         self.epsilon_end = epsilon_end
@@ -115,7 +115,8 @@ class DQNAgent:
         # Solo calculamos Q para los estados no finales.
         if non_final_mask.any():
             with torch.no_grad():
-                next_state_values[non_final_mask] = self.target_net(next_state_batch).max(1)[0]
+                non_final_next_states = next_state_batch[non_final_mask]
+                next_state_values[non_final_mask] = self.target_net(non_final_next_states).max(1)[0]
         # Calculo del valor esperado de la accion.
         expected_state_action_values = (next_state_values * self.gamma) + reward_batch
         # Definimos la funcion de calculo para no repetir codigo en el if/else del AMP.
@@ -130,7 +131,7 @@ class DQNAgent:
         self.optimizer.zero_grad(set_to_none=True) # set_to_none es un poco mas rapido.
         # Usar AMP si esta habilitado.
         if self.use_amp:
-            with torch.cuda.amp.autocast():
+            with torch.amp.autocast("cuda"):
                 loss = compute_loss()
             # Backward y step con escalado.
             self.scaler.scale(loss).backward()
