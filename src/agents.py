@@ -33,11 +33,17 @@ class DQNAgent:
         use_per: bool=False       # Habilitar Prioritized Experience Replay
         #----------------------------------------- Parámetros Rainbow DQN -----------------------------------------#
     ) -> None:
+        '''----------------------------------------- Parámetros Rainbow DQN -----------------------------------------'''
+        self.use_double = use_double
+        self.use_dueling = use_dueling
+        self.use_per = use_per
+        '''----------------------------------------- Parámetros Rainbow DQN -----------------------------------------'''
+
         self.n_actions = n_actions
         self.device = device
         # Inicializa las redes (policy y target).
-        self.policy_net = DQN(input_shape, n_actions).to(device)
-        self.target_net = DQN(input_shape, n_actions).to(device)
+        self.policy_net = DQN(input_shape, n_actions, use_dueling=use_dueling).to(device)
+        self.target_net = DQN(input_shape, n_actions, use_dueling=use_dueling).to(device)
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.target_net.eval()
         # Optimizador para la red de politica.
@@ -67,12 +73,7 @@ class DQNAgent:
                 print(f"Modelo cargado desde {network_file}")
             except Exception as e:
                 print(f"Error al cargar pesos: {e}. Se entrenara desde cero.")
-        '''----------------------------------------- Parámetros Rainbow DQN -----------------------------------------'''
-        self.use_double = use_double
-        self.use_dueling = use_dueling
-        self.use_per = use_per
-        '''----------------------------------------- Parámetros Rainbow DQN -----------------------------------------'''
-
+        
 
     # Almacena una nueva transicion en la memoria de repeticion.
     def new_transition(self, observation, action, reward, next_observation, done):

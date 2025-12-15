@@ -24,9 +24,9 @@ def train(config_data, agent_type):
     episodes = int(config_data.get('episodes'))                         # Número de episodios.
     max_episode_length = int(config_data.get('max_episode_length'))     # Longitud maxima de un episodio.
     save_model_interval = int(config_data.get('save_model_interval'))   # Intervalo para guardar el modelo.
-    use_double = config_data.getboolean('use_double', fallback=False)
-    use_dueling = config_data.getboolean('use_dueling', fallback=False)
-    use_per = config_data.getboolean('use_per', fallback=False)
+    use_double = config_data.getboolean('use_double', fallback=False)   # Habilitar Double DQN
+    use_dueling = config_data.getboolean('use_dueling', fallback=False) # Habilitar Dueling DQN
+    use_per = config_data.getboolean('use_per', fallback=False)         # Habilitar Prioritized Experience Replay   
     # Cuda o MPS si esta disponible, de lo contrario CPU.
     if torch.cuda.is_available():
         device = torch.device("cuda")

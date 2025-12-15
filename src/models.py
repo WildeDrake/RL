@@ -16,8 +16,9 @@ def init_weights(m):
 # Definicion de la arquitectura de la red neuronal DQN.
 class DQN(nn.Module):
     # Constructor de la clase DQN
-    def __init__(self, input_shape: tuple, n_actions: int) -> None:
+    def __init__(self, input_shape: tuple, n_actions: int, use_dueling: bool=False) -> None:
         super().__init__()
+        self.use_dueling = use_dueling
         # Desempaquetamos la forma de entrada.
         c, h, w = input_shape
         # Capas convolucionales de la red.
@@ -33,12 +34,28 @@ class DQN(nn.Module):
         with torch.no_grad():
             dummy_input = torch.zeros(1, *input_shape)
             conv_out_size = self.conv_layers(dummy_input).view(1, -1).size(1)
-        # Capas lineales de la red.
-        self.linear_layers = nn.Sequential(
-            nn.Linear(conv_out_size, 512),
-            nn.ReLU(), 
-            nn.Linear(512, n_actions)
-        )
+        # Definimos las capas lineales dependiendo de si usamos Dueling DQN o DQN simple.
+        if self.use_dueling == False:
+            # Capas lineales de la red.
+            self.linear_layers = nn.Sequential(
+                nn.Linear(conv_out_size, 512), 
+                nn.ReLU(), 
+                nn.Linear(512, n_actions)
+            )
+        else:
+            '''---------------------------------------- LÓGICA DUELING DQN ----------------------------------------'''
+            # Dos cabezas separadas, Value (V) y Advantage (A).
+            self.fc_value = nn.Sequential(
+                nn.Linear(conv_out_size, 512),
+                nn.ReLU(),
+                nn.Linear(512, 1) # Predice el valor del estado.
+            )
+            self.fc_advantage = nn.Sequential(
+                nn.Linear(conv_out_size, 512),
+                nn.ReLU(),
+                nn.Linear(512, n_actions) # Predice N valores (ventaja de cada accion).
+            )
+            '''---------------------------------------- LÓGICA DUELING DQN ----------------------------------------'''
         # Aplica la inicializacion de pesos a todas las capas.
         self.apply(init_weights)
 
@@ -51,10 +68,18 @@ class DQN(nn.Module):
         x = self.conv_layers(x)
         # Aplanamos la salida de las capas convolucionales.
         x = x.view(x.size(0), -1) 
-        # Pasamos la salida a traves de las capas lineales.
-        x = self.linear_layers(x)
-        # Retornamos la salida de la red.
-        return x
+        if self.use_dueling == False:
+            # Pasamos la salida a traves de las capas lineales.
+            x = self.linear_layers(x)
+            # Retornamos la salida de la red.
+            return x
+        else:
+            '''---------------------------------------- LÓGICA DUELING DQN ----------------------------------------'''
+            V = self.fc_value(x)
+            A = self.fc_advantage(x)
+            # Fórmula de Dueling: Q = V + (A - mean(A))
+            return V + (A - A.mean(dim=1, keepdim=True))
+    '''------------------------------------------------ LÓGICA DUELING DQN ----------------------------------------'''
 
 
 
