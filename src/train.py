@@ -24,6 +24,9 @@ def train(config_data, agent_type):
     episodes = int(config_data.get('episodes'))                         # Número de episodios.
     max_episode_length = int(config_data.get('max_episode_length'))     # Longitud maxima de un episodio.
     save_model_interval = int(config_data.get('save_model_interval'))   # Intervalo para guardar el modelo.
+    use_double = config_data.getboolean('use_double', fallback=False)
+    use_dueling = config_data.getboolean('use_dueling', fallback=False)
+    use_per = config_data.getboolean('use_per', fallback=False)
     # Cuda o MPS si esta disponible, de lo contrario CPU.
     if torch.cuda.is_available():
         device = torch.device("cuda")
@@ -50,7 +53,10 @@ def train(config_data, agent_type):
             gamma=gamma,
             target_update=target_update,
             network_file=model_path,
-            input_shape=env.observation_space.shape
+            input_shape=env.observation_space.shape,
+            use_double=use_double,
+            use_dueling=use_dueling,
+            use_per=use_per
         )
         DQN_train_loop(env, agent, episodes, batch_size, max_episode_length, save_model_interval)
         print("Entrenando agente DQN")
