@@ -2,6 +2,7 @@ import numpy as np
 import torch
 
 
+
 # Definicion del buffer de repeticion.
 class ReplayBuffer:
     # Constructor.
@@ -55,15 +56,15 @@ class ReplayBuffer:
     def __len__(self):
         return self.size
 
-class PPOBuffer: # En PPO difiere un poco el buffer: solo guarda la experiencia inmediata hecha por la política reciente
+class PPOBuffer: # En PPO difiere un poco el buffer: solo guarda la experiencia inmediata hecha por la politica reciente
     def __init__(self):
         self.states = []
         self.actions = []
         self.rewards = []
         self.size = 0
-        self.values = [] # Valor estimado por el crítico
+        self.values = [] # Valor estimado por el critico
         self.log_probs = [] # Probabilidades logaritmicas
-        self.dones = [] # Indicador de finalización episodio
+        self.dones = [] # Indicador de finalizacion episodio
     
     def push(self, state,action,reward,value,log_prob,done):
         self.states.append(state)
@@ -86,7 +87,7 @@ class PPOBuffer: # En PPO difiere un poco el buffer: solo guarda la experiencia 
     def __len__(self):
         return self.size
         
-    def sample(self): # No sé (?)
+    def sample(self): # No se (?)
         batch_states = torch.as_tensor(np.array(self.states), dtype=torch.float32)
         batch_actions = torch.as_tensor(np.array(self.actions), dtype=torch.int64).unsqueeze(1)
         batch_rewards = torch.as_tensor(np.array(self.rewards), dtype=torch.float32)

@@ -213,6 +213,7 @@ class PPOAgent:
         c1: float,  # Coeficiente para el termino de perdida del valor.
         target_update: int,  # La frecuencia con la que se actualiza la red objetivo.
         network_file=None,  # Un archivo para cargar los pesos de la red pre-entrenada.
+        input_shape=None  # La forma de la entrada para la red neuronal.
     ) -> None:
         self.n_actions = n_actions
         self.device = device
@@ -244,7 +245,7 @@ class PPOAgent:
                 print(f"Modelo cargado desde {network_file}")
             except RuntimeError as e:
                 print(f"Error al cargar pesos: {e}. Se entrenara desde cero.")
-
+        self.input_shape = input_shape
     def next_action(
         self,
         observation: torch.Tensor,  # La observacion/estado actual

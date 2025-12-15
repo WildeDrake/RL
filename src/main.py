@@ -1,7 +1,9 @@
 import argparse
+
 from utils import load_parameters_from_config
-from test import testing
-from train import training
+from test import test
+from train import train
+
 
 
 def main():
@@ -12,8 +14,7 @@ def main():
     parser.add_argument('--agent', '-a', help='Tipo de agente (DQN, DDQN, PPO, etc.)', default='DQN')
     args = parser.parse_args()
     # Cargar parámetros desde el archivo de configuración
-    config_path = args.config
-    config_data = load_parameters_from_config(config_path, args.mode)
+    config_data = load_parameters_from_config(args.config, args.mode)
     # Validar parametros minimos segun el modo
     required_keys = (
         ["env", "actions", "learning_rate", "episodes"]
@@ -25,9 +26,9 @@ def main():
             raise ValueError(f"Missing required parameter '{key}' for mode '{args.mode}' in config file.")
     # Ejecutar el modo correspondiente
     if args.mode == 'Training':
-        training(config_data, args.agent.upper())
+        train(config_data, args.agent.upper())
     else:
-        testing(config_data, args.agent.upper(), max_steps_per_episode=2000)
+        test(config_data, args.agent.upper())
 
 
 if __name__ == '__main__':
