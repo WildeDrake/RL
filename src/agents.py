@@ -5,8 +5,7 @@ import random
 import os
 import numpy as np
 
-from replayBuffer import ReplayBuffer
-from replayBuffer import PPOBuffer
+from replayBuffer import ReplayBuffer, PPOBuffer
 from models import DQN, PPO
 
 
