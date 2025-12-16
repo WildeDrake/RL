@@ -6,6 +6,7 @@ import os
 import numpy as np
 
 from replayBuffer import ReplayBuffer
+from replayBuffer import PPOBuffer
 from models import DQN, PPO
 
 
@@ -182,7 +183,7 @@ class PPOAgent:
         device: torch.device, # El dispositivo (CPU o GPU) en el que se ejecutara el agente.
         n_actions: int, # El numero de acciones posibles que el agente puede tomar.
         lr: float,  # La tasa de aprendizaje para el optimizador de la red neuronal del agente.
-        clippping_epsilon: float,  # El valor de epsilon para el recorte en PPO.
+        clipping_epsilon: float,  # El valor de epsilon para el recorte en PPO.
         total_memory: int,  # La capacidad maxima de la memoria de repeticion.
         initial_memory: int,  # La numero minimo de transiciones requeridas en la memoria de repeticion antes de que comience el aprendizaje.
         gamma: float,  # El factor de descuento para las recompensas futuras en la actualizacion de Q-learning.
@@ -205,12 +206,12 @@ class PPOAgent:
         self.scaler = None
         # Variables para el calculo de la perdida PPO.
         self.steps_done = 0
-        self.clippping_epsilon = clippping_epsilon
+        self.clipping_epsilon = clipping_epsilon
         self.gamma = gamma
         self.c1 = c1
         self.target_update = target_update
         # Inicializa la memoria de repeticion.
-        self.memory = ReplayBuffer(capacity=total_memory, device=self.device)
+        self.memory = PPOBuffer(capacity=total_memory, device=self.device)
         self.initial_memory = initial_memory
         # Si hay archivo de pesos existente, cargarlo correctamente
         if network_file and os.path.exists(network_file):
@@ -265,13 +266,14 @@ class PPOAgent:
             # Accion aleatoria
             action = random.randrange(self.n_actions)
         return action
-    
-    def optimize(self, batch_size: int): #  AAAAAAAAAAAAAAA EL DIABLO
+    # Seba: revisar bien este optimize. en los dqn's se ocupa next_state_batch y values, pero aca no estan definidos.
+    def optimize(self, batch_size: int, n_epochs_ppo: int): #  AAAAAAAAAAAAAAA EL DIABLO
         # Solo comienza a optimizar una vez que haya suficientes transiciones en la memoria de repeticion.
         if len(self.memory) < self.initial_memory or len(self.memory) < batch_size:
             return
         # Muestrea un lote de transiciones de la memoria de repeticion (ya en device).
-        state_batch, action_batch, reward_batch, next_state_batch, done_batch, non_final_mask = self.memory.sample(batch_size)
+        state_batch, action_batch, reward_batch, values_batch, log_probs_batch, dones_batch, non_final_mask = self.memory.sample(batch_size)
+        # Seba: Eliminar target net dicen q no hay que ocupar target net aaaaaaaaaa
         # Calculo del Target (Red Objetivo).
         next_state_values = torch.zeros(batch_size, device=self.device)
         # Solo calculamos Q para los estados no finales.
@@ -280,3 +282,88 @@ class PPOAgent:
                     # Obtener los valores maximos de Q para los siguientes estados desde la red objetivo.
                     non_final_next_states = next_state_batch[non_final_mask]
                     next_state_values[non_final_mask] = self.target_net(non_final_next_states).max(1)[0]
+        # Convertir a listas para GAE
+        rewards_list = reward_batch.cpu().tolist()
+        state_list = state_batch.squeeze().cpu().tolist()
+        dones_list = done_batch.cpu().tolist()
+        masks_list = [1.0 - float(d) for d in dones_list]  # Mascara: 1 si no termino, 0 si termino
+        # Calcular ventajas y retornos usando GAE
+        advantages, returns = self.GAE(
+        rewards=rewards_list,
+        masks=masks_list,
+        values=state_list,
+        next_value=next_state_values.cpu().tolist(),
+        gamma=self.gamma,
+        tau=0.9
+        )
+
+        # Seba: esta parte hay que revisarla bien, no entiendo del todo los n_epochs
+        dataset_size = len(batch_size)
+
+        for epoch in range(n_epochs_ppo):
+            # Generar indices aleatorios para mini-batches
+            indices = torch.randperm(dataset_size, device=self.device)
+            
+            # Iterar sobre mini-batches
+            for start_idx in range(0, dataset_size, batch_size):
+                end_idx = min(start_idx + batch_size, dataset_size)
+                mb_indices = indices[start_idx:end_idx]
+                
+                # Extraer mini-batch (vars de mb)
+                mb_states = state_batch[mb_indices]
+                mb_actions = action_batch[mb_indices]
+                mb_old_log_probs = log_probs_batch[mb_indices]
+                mb_advantages = advantages[mb_indices]
+                mb_returns = returns[mb_indices]
+                
+                # Forward pass con la politica actual
+                logits, values_pred = self.policy_net(mb_states)
+                
+                # Crear distribucion de probabilidad sobre las acciones
+                dist = torch.distributions.Categorical(logits=logits)
+                
+                # Calcular nuevas log probabilidades para las acciones tomadas
+                mb_new_log_probs = dist.log_prob(mb_actions.squeeze())
+                
+                # Calcular entropia (para fomentar exploracion)
+                entropy = dist.entropy().mean()
+                
+                # Calcular policy loss con clipping
+                # Ratio (Si es mejor la nueva o la vieja politica)
+                ratio = torch.exp(mb_new_log_probs - mb_old_log_probs.squeeze())
+                
+                # Surrogate sin clip: ratio * A
+                surr1 = ratio * mb_advantages
+                
+                # Surrogate con clip: clip * A
+                surr2 = torch.clamp(
+                    ratio, 
+                    1.0 - self.clipping_epsilon,  # 1 - 0.2 = 0.8
+                    1.0 + self.clipping_epsilon   # 1 + 0.2 = 1.2
+                ) * mb_advantages
+                
+                # Tomar el minimo (enfoque conservador/pesimista)
+                policy_loss = -torch.min(surr1, surr2).mean()
+                
+                # Calcular value loss, o perdida  del critico
+                # MSE entre valores predichos y returns objetivo
+                values_pred = values_pred.squeeze()
+                value_loss = torch.nn.functional.mse_loss(values_pred, mb_returns)
+                c1 = 1 # Coeficiente para el termino de perdida del valor, en juegos de Atari se suele dejar como 1.
+                
+                # Entropy bonus es la var de entropy, recomiendan dejar su coeficiente c2 como valor fijo 0.01
+                c2 = 0.01
+                # Loss total = PPO loss
+                total_loss = policy_loss + c1 * value_loss - c2 * entropy
+                
+                # Optimizadores
+                
+                self.optimizer.zero_grad(set_to_none=True)
+                total_loss.backward()
+                
+                # Gradient clipping (evita actualizaciones demasiado grandes)
+                torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), max_norm=0.5)
+                
+                self.optimizer.step()
+        # Limpiar el buffer por ser on-policy, creo???
+        self.memory.clear()
