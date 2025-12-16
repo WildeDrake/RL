@@ -187,8 +187,6 @@ class PPOAgent:
         total_memory: int,  # La capacidad maxima de la memoria de repeticion.
         initial_memory: int,  # La numero minimo de transiciones requeridas en la memoria de repeticion antes de que comience el aprendizaje.
         gamma: float,  # El factor de descuento para las recompensas futuras en la actualizacion de Q-learning.
-        c1: float,  # Coeficiente para el termino de perdida del valor.
-        target_update: int,  # La frecuencia con la que se actualiza la red objetivo.
         network_file=None,  # Un archivo para cargar los pesos de la red pre-entrenada.
         input_shape=None  # La forma de la entrada para la red neuronal.
     ) -> None:
@@ -196,9 +194,6 @@ class PPOAgent:
         self.device = device
         # Inicializa las redes (policy y target)
         self.policy_net = PPO(n_actions).to(device)
-        self.target_net = PPO(n_actions).to(device)
-        self.target_net.load_state_dict(self.policy_net.state_dict())
-        self.target_net.eval()
         # Optimizador para la red de politica.
         # (Conservamos el nombre original 'optimizer' para compatibilidad)
         self.optimizer = Adam(self.policy_net.parameters(), lr=lr)
@@ -208,8 +203,6 @@ class PPOAgent:
         self.steps_done = 0
         self.clipping_epsilon = clipping_epsilon
         self.gamma = gamma
-        self.c1 = c1
-        self.target_update = target_update
         # Inicializa la memoria de repeticion.
         self.memory = PPOBuffer(capacity=total_memory, device=self.device)
         self.initial_memory = initial_memory
@@ -218,32 +211,55 @@ class PPOAgent:
             state_dict = torch.load(network_file, map_location=device)
             try:
                 self.policy_net.load_state_dict(state_dict)
-                self.target_net.load_state_dict(state_dict)
                 print(f"Modelo cargado desde {network_file}")
             except RuntimeError as e:
                 print(f"Error al cargar pesos: {e}. Se entrenara desde cero.")
         self.input_shape = input_shape
 
-    def GAE(self, rewards, masks, values, next_value, gamma=0.99, tau=0.9): # Sirve para calcular las ventajas generalizadas del buffer
-        values = values + [next_value]
+    def GAE(self, rewards, masks, values, next_value, gamma=0.99, tau=0.9):
+        # Asegurar que son listas para poder indexar
+        if isinstance(rewards, torch.Tensor):
+            rewards = rewards.cpu().tolist()
+        if isinstance(masks, torch.Tensor):
+            masks = masks.cpu().tolist()
+        if isinstance(values, torch.Tensor):
+            values_list = values.cpu().tolist()
+        else:
+            values_list = list(values)
+        
+        # Inicializar listas para GAE
         gae = 0
-        ventajas = []
-        for step in reversed(range(len(rewards))): # Recomiendan hacerlo para atrás
-            # Conseguimos el error de Temporal Difference del step (delta)
-            delta = rewards[step] + gamma * values[step + 1] * masks[step] - values[step]
-            # Calcular GAE: Una suma ponderada de los deltas futuros.
+        gae_advantages = []
+        
+        # Iterar hacia atrás sobre los pasos
+        for step in reversed(range(len(rewards))):
+            # Valor del siguiente estado
+            next_value_step = values_list[step + 1] if step + 1 < len(values_list) else next_value
+            
+            # Temporal difference error (delta)
+            delta = rewards[step] + gamma * next_value_step * masks[step] - values_list[step]
+            
+            # GAE recursivo: g_t = δ_t + (γλ) * mask_t * g_{t+1}
             gae = delta + gamma * tau * masks[step] * gae
-            ventajas.insert(0, gae + values[step])
+            
+            # Insertar al inicio (porque iteramos hacia atrás)
+            gae_advantages.insert(0, gae)
+        
         # Convertir a tensores
-        ventajas = torch.tensor(ventajas, device=self.device, dtype=torch.float32) #TODO: molestar con float32.
-        tvalores = torch.tensor(values, device=self.device, dtype=torch.float32) # Tensor de valores
-        returns = ventajas - tvalores
-
-        #Normalización??
-        ventajas = (ventajas - ventajas.mean()) / (ventajas.std() + 1e-8)
-
-        return ventajas, returns
+        advantages = torch.tensor(gae_advantages, device=self.device, dtype=torch.float32)
+        values_tensor = torch.tensor(values_list, device=self.device, dtype=torch.float32)
+        
+        # Retornos = advantages + valores originales
+        returns = advantages + values_tensor
+        
+        return advantages, returns
     
+    def new_transition(self, observation, action, reward, next_observation, done, value, log_prob):
+        # Convierte las observaciones a numpy arrays si es necesario.
+        obs = np.array(observation, copy=False)
+        # Almacena la transicion en la memoria.
+        self.memory.push(obs, action, reward, value, log_prob, done)
+
     def next_action(
         self,
         observation: torch.Tensor,  # La observacion/estado actual
@@ -266,39 +282,35 @@ class PPOAgent:
             # Accion aleatoria
             action = random.randrange(self.n_actions)
         return action
-    # Seba: revisar bien este optimize. en los dqn's se ocupa next_state_batch y values, pero aca no estan definidos.
-    def optimize(self, batch_size: int, n_epochs_ppo: int): #  AAAAAAAAAAAAAAA EL DIABLO
+    
+    def optimize(self, batch_size: int, n_epochs_ppo: int):
+        
         # Solo comienza a optimizar una vez que haya suficientes transiciones en la memoria de repeticion.
         if len(self.memory) < self.initial_memory or len(self.memory) < batch_size:
             return
+        
         # Muestrea un lote de transiciones de la memoria de repeticion (ya en device).
         state_batch, action_batch, reward_batch, values_batch, log_probs_batch, dones_batch, non_final_mask = self.memory.sample(batch_size)
-        # Seba: Eliminar target net dicen q no hay que ocupar target net aaaaaaaaaa
-        # Calculo del Target (Red Objetivo).
-        next_state_values = torch.zeros(batch_size, device=self.device)
-        # Solo calculamos Q para los estados no finales.
-        if non_final_mask.any():
-                with torch.no_grad():
-                    # Obtener los valores maximos de Q para los siguientes estados desde la red objetivo.
-                    non_final_next_states = next_state_batch[non_final_mask]
-                    next_state_values[non_final_mask] = self.target_net(non_final_next_states).max(1)[0]
-        # Convertir a listas para GAE
-        rewards_list = reward_batch.cpu().tolist()
-        state_list = state_batch.squeeze().cpu().tolist()
-        dones_list = done_batch.cpu().tolist()
-        masks_list = [1.0 - float(d) for d in dones_list]  # Mascara: 1 si no termino, 0 si termino
+        
+        # Calcular el valor del próximo estado para bootstrapping en GAE
+        with torch.no_grad():
+            # Usar el último estado no-terminal para obtener next_value
+            last_state = state_batch[-1].unsqueeze(0) if state_batch.dim() == 3 else state_batch[-1:].unsqueeze(0)
+            _, next_value = self.policy_net(last_state)
+            next_value = next_value.item() if dones_batch[-1].item() == 0 else 0.0
+        
         # Calcular ventajas y retornos usando GAE
         advantages, returns = self.GAE(
-        rewards=rewards_list,
-        masks=masks_list,
-        values=state_list,
-        next_value=next_state_values.cpu().tolist(),
-        gamma=self.gamma,
-        tau=0.9
+            rewards=reward_batch,
+            masks=1.0 - dones_batch,  # Pasar como tensores, la función los convertirá
+            values=values_batch,
+            next_value=next_value,
+            gamma=self.gamma,
+            tau=0.9
         )
-
-        # Seba: esta parte hay que revisarla bien, no entiendo del todo los n_epochs
-        dataset_size = len(batch_size)
+        
+        # Tamaño total del dataset
+        dataset_size = len(reward_batch)
 
         for epoch in range(n_epochs_ppo):
             # Generar indices aleatorios para mini-batches
@@ -316,43 +328,47 @@ class PPOAgent:
                 mb_advantages = advantages[mb_indices]
                 mb_returns = returns[mb_indices]
                 
+                # Normalizar ventajas para estabilidad numérica
+                mb_advantages = (mb_advantages - mb_advantages.mean()) / (mb_advantages.std() + 1e-8)
+                
                 # Forward pass con la politica actual
                 logits, values_pred = self.policy_net(mb_states)
+                
+                # Asegurar shape correcto: values_pred debe ser (mb_size,)
+                values_pred = values_pred.squeeze(-1)
                 
                 # Crear distribucion de probabilidad sobre las acciones
                 dist = torch.distributions.Categorical(logits=logits)
                 
                 # Calcular nuevas log probabilidades para las acciones tomadas
-                mb_new_log_probs = dist.log_prob(mb_actions.squeeze())
+                mb_new_log_probs = dist.log_prob(mb_actions)
                 
                 # Calcular entropia (para fomentar exploracion)
                 entropy = dist.entropy().mean()
                 
-                # Calcular policy loss con clipping
-                # Ratio (Si es mejor la nueva o la vieja politica)
-                ratio = torch.exp(mb_new_log_probs - mb_old_log_probs.squeeze())
+                # Calcular policy loss con clipping PPO
+                # Ratio: π_new(a|s) / π_old(a|s)
+                ratio = torch.exp(mb_new_log_probs - mb_old_log_probs)
                 
                 # Surrogate sin clip: ratio * A
                 surr1 = ratio * mb_advantages
                 
-                # Surrogate con clip: clip * A
+                # Surrogate con clip: clip(ratio, 1-ε, 1+ε) * A
                 surr2 = torch.clamp(
                     ratio, 
-                    1.0 - self.clipping_epsilon,  # 1 - 0.2 = 0.8
-                    1.0 + self.clipping_epsilon   # 1 + 0.2 = 1.2
+                    1.0 - self.clipping_epsilon,
+                    1.0 + self.clipping_epsilon
                 ) * mb_advantages
                 
-                # Tomar el minimo (enfoque conservador/pesimista)
+                # Policy loss: negativo del mínimo (paso conservador en PPO)
                 policy_loss = -torch.min(surr1, surr2).mean()
                 
-                # Calcular value loss, o perdida  del critico
-                # MSE entre valores predichos y returns objetivo
-                values_pred = values_pred.squeeze()
+                # Value loss: MSE entre valores predichos y returns objetivo
                 value_loss = torch.nn.functional.mse_loss(values_pred, mb_returns)
-                c1 = 1 # Coeficiente para el termino de perdida del valor, en juegos de Atari se suele dejar como 1.
                 
-                # Entropy bonus es la var de entropy, recomiendan dejar su coeficiente c2 como valor fijo 0.01
-                c2 = 0.01
+                # Coeficientes de pérdida
+                c1 = 1.0  # Peso del value loss
+                c2 = 0.01  # Peso del entropy bonus
                 # Loss total = PPO loss
                 total_loss = policy_loss + c1 * value_loss - c2 * entropy
                 
@@ -365,5 +381,6 @@ class PPOAgent:
                 torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), max_norm=0.5)
                 
                 self.optimizer.step()
-        # Limpiar el buffer por ser on-policy, creo???
+
+        # Limpiar la memoria PPO despues de la optimizacion
         self.memory.clear()

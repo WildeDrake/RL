@@ -71,11 +71,10 @@ def train(config_data, agent_type):
             total_memory=memory_size,
             initial_memory=initial_memory,
             gamma=gamma,
-            target_update=target_update,
             network_file=model_path,
             input_shape=env.observation_space.shape
         )
-        PPO_train_loop(env, agent, episodes, batch_size, max_episode_length)
+        PPO_train_loop(env, agent, episodes, batch_size, max_episode_length, save_model_interval)
         print("Entrenando agente PPO")
     else:
         raise ValueError(f"Tipo de agente no reconocido: {agent_type}")
