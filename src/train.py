@@ -26,10 +26,16 @@ def train(config_data, agent_type):
     epochs = int(config_data.get('epochs'))                             # Número de épocas para PPO.
     episodes = int(config_data.get('episodes'))                         # Número de episodios.
     max_episode_length = int(config_data.get('max_episode_length'))     # Longitud maxima de un episodio.
-    save_model_interval = int(config_data.get('save_model_interval'))   # Intervalo para guardar el modelo.
-    use_double = config_data.getboolean('use_double', fallback=False)   # Habilitar Double DQN
-    use_dueling = config_data.getboolean('use_dueling', fallback=False) # Habilitar Dueling DQN
-    use_per = config_data.getboolean('use_per', fallback=False)         # Habilitar Prioritized Experience Replay   
+    save_model_interval = int(config_data.get('save_model_interval'))   # Habilitar Prioritized Experience Replay
+    run_name = config_data.get('run_name', fallback='default_run')      # Intervalo para guardar el modelo.
+    '''---------------------------------------- Rainbow DQN----------------------------------------'''
+    use_double = config_data.getboolean('use_double', fallback=False)                   # Habilitar Double DQN.
+    use_dueling = config_data.getboolean('use_dueling', fallback=False)                 # Habilitar Dueling DQN.
+    use_per = config_data.getboolean('use_per', fallback=False)                         # Habilitar Prioritized Experience Replay   
+    use_multi_step = config_data.getboolean('use_multi_step', fallback=False)           # Habilitar N-step learning
+    use_noisy = config_data.getboolean('use_noisy', fallback=False)                     # Habilitar Noisy Nets
+    use_distributional = config_data.getboolean('use_distributional', fallback=False)   # Habilitar Distributional RL (C51)
+    '''---------------------------------------- Rainbow DQN----------------------------------------'''
     # Cuda o MPS si esta disponible, de lo contrario CPU.
     if torch.cuda.is_available():
         device = torch.device("cuda")
@@ -59,9 +65,12 @@ def train(config_data, agent_type):
             input_shape=env.observation_space.shape,
             use_double=use_double,
             use_dueling=use_dueling,
-            use_per=use_per
+            use_per=use_per,
+            use_multi_step=use_multi_step,
+            use_noisy=use_noisy,
+            use_distributional=use_distributional
         )
-        DQN_train_loop(env, agent, episodes, batch_size, max_episode_length, save_model_interval)
+        DQN_train_loop(env, agent, episodes, batch_size, max_episode_length, save_model_interval, run_name)
         print("Entrenando agente DQN")
     elif agent_type == "PPO":
         env = make_ppo_env(env_name, seed=42)
@@ -78,7 +87,7 @@ def train(config_data, agent_type):
             network_file=model_path,
             input_shape=env.observation_space.shape
         )
-        PPO_train_loop(env, agent, episodes, batch_size, epochs, max_episode_length, save_model_interval)
+        PPO_train_loop(env, agent, episodes, batch_size, epochs, max_episode_length, save_model_interval, run_name)
         print("Entrenando agente PPO")
     else:
         raise ValueError(f"Tipo de agente no reconocido: {agent_type}")
