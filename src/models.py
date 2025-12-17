@@ -1,12 +1,74 @@
 import torch.nn as nn
 import torch
+import torch.nn.functional as F
+import math
+
+
+
+'''------------------------------------------------ LÓGICA NOISY NET----------------------------------------'''
+# Definicion de la capa lineal con ruido Noisy Nets.
+class NoisyLinear(nn.Module):
+    def __init__(self, in_features, out_features, std_init=0.5):
+        super(NoisyLinear, self).__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.std_init = std_init
+        # Parámetros aprendibles: Mu (Media) y Sigma (Ruido)
+        self.weight_mu = nn.Parameter(torch.empty(out_features, in_features))
+        self.weight_sigma = nn.Parameter(torch.empty(out_features, in_features))
+        self.register_buffer('weight_epsilon', torch.empty(out_features, in_features))
+        self.bias_mu = nn.Parameter(torch.empty(out_features))
+        self.bias_sigma = nn.Parameter(torch.empty(out_features))
+        self.register_buffer('bias_epsilon', torch.empty(out_features))
+        # Inicialización especial
+        self.reset_parameters()
+        self.reset_noise()
+
+
+    # Inicialización especial
+    def reset_parameters(self):
+        # Inicialización especial para Noisy Nets (Factorized Gaussian Noise)
+        mu_range = 1 / math.sqrt(self.in_features)
+        self.weight_mu.data.uniform_(-mu_range, mu_range)
+        self.weight_sigma.data.fill_(self.std_init / math.sqrt(self.in_features))
+        self.bias_mu.data.uniform_(-mu_range, mu_range)
+        self.bias_sigma.data.fill_(self.std_init / math.sqrt(self.in_features))
+
+
+    # Establece el ruido para la capa.
+    def _scale_noise(self, size):
+        x = torch.randn(size)
+        return x.sign().mul_(x.abs().sqrt_())
+
+
+    # Resetea el ruido para la capa.
+    def reset_noise(self):
+        epsilon_in = self._scale_noise(self.in_features)
+        epsilon_out = self._scale_noise(self.out_features)
+        self.weight_epsilon.copy_(epsilon_out.ger(epsilon_in))
+        self.bias_epsilon.copy_(epsilon_out)
+
+
+    # Metodo forward que define el paso hacia adelante de la capa.
+    def forward(self, input):
+        if self.training:
+            # Entrenamiento: w = µ + σ * ε
+            return F.linear(input, self.weight_mu + self.weight_sigma * self.weight_epsilon,
+                            self.bias_mu + self.bias_sigma * self.bias_epsilon)
+        else:
+            # Evaluación: w = µ
+            return F.linear(input, self.weight_mu, self.bias_mu)
+'''------------------------------------------------ LÓGICA NOISY NET----------------------------------------'''
 
 
 
 # Inicializacion de pesos para las capas lineales y convolucionales.
 def init_weights(m):
+    # Si es NoisyLinear, NO tocamos los pesos
+    if isinstance(m, NoisyLinear):
+        return 
+    # Solo inicializamos si es Linear normal o Conv2d
     if isinstance(m, (nn.Linear, nn.Conv2d)):
-        # Inicializa los pesos de la capa
         torch.nn.init.kaiming_uniform_(m.weight, nonlinearity='relu')
         if m.bias is not None:
             nn.init.constant_(m.bias, 0)
@@ -16,9 +78,10 @@ def init_weights(m):
 # Definicion de la arquitectura de la red neuronal DQN.
 class DQN(nn.Module):
     # Constructor de la clase DQN
-    def __init__(self, input_shape: tuple, n_actions: int, use_dueling: bool=False) -> None:
+    def __init__(self, input_shape: tuple, n_actions: int, use_dueling: bool=False, use_noisy: bool=False) -> None:
         super().__init__()
         self.use_dueling = use_dueling
+        self.use_noisy = use_noisy
         # Desempaquetamos la forma de entrada.
         c, h, w = input_shape
         # Capas convolucionales de la red.
@@ -31,6 +94,12 @@ class DQN(nn.Module):
             nn.ReLU(),
         )
         # Calculamos el tamaño de salida dinamicamente.
+        '''------------------------------------------------ LÓGICA NOISY NET----------------------------------------'''
+        if self.use_noisy:
+            LinearLayer = NoisyLinear 
+        else:
+            LinearLayer = nn.Linear
+        '''------------------------------------------------ LÓGICA NOISY NET----------------------------------------'''
         with torch.no_grad():
             dummy_input = torch.zeros(1, *input_shape)
             conv_out_size = self.conv_layers(dummy_input).view(1, -1).size(1)
@@ -38,26 +107,35 @@ class DQN(nn.Module):
         if self.use_dueling == False:
             # Capas lineales de la red.
             self.linear_layers = nn.Sequential(
-                nn.Linear(conv_out_size, 512), 
+                LinearLayer(conv_out_size, 512), 
                 nn.ReLU(), 
-                nn.Linear(512, n_actions)
+                LinearLayer(512, n_actions)
             )
         else:
             '''---------------------------------------- LÓGICA DUELING DQN ----------------------------------------'''
             # Dos cabezas separadas, Value (V) y Advantage (A).
             self.fc_value = nn.Sequential(
-                nn.Linear(conv_out_size, 512),
+                LinearLayer(conv_out_size, 512),
                 nn.ReLU(),
-                nn.Linear(512, 1) # Predice el valor del estado.
+                LinearLayer(512, 1) # Predice el valor del estado.
             )
             self.fc_advantage = nn.Sequential(
-                nn.Linear(conv_out_size, 512),
+                LinearLayer(conv_out_size, 512),
                 nn.ReLU(),
-                nn.Linear(512, n_actions) # Predice N valores (ventaja de cada accion).
+                LinearLayer(512, n_actions) # Predice N valores (ventaja de cada accion).
             )
             '''---------------------------------------- LÓGICA DUELING DQN ----------------------------------------'''
         # Aplica la inicializacion de pesos a todas las capas.
         self.apply(init_weights)
+
+
+    # Este método será llamado por el Agente antes de entrenar
+    def reset_noise(self):
+        if not self.use_noisy: return
+        # Busca todas las capas NoisyLinear hijas y resetea su ruido
+        for m in self.modules():
+            if isinstance(m, NoisyLinear):
+                m.reset_noise()
 
 
     # Metodo forward que define el paso hacia adelante de la red.

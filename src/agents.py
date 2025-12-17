@@ -151,8 +151,8 @@ class DQNAgent:
         # Actualiza el contador de pasos.
         self.steps_done += 1
         # Si usamos Noisy Nets, ignoramos epsilon
-        if self.use_noisy == False:
-            should_explore = True 
+        if self.use_noisy:
+            should_explore = False
         else: # Si no usamos Noisy, usamos Epsilon-Greedy
             should_explore = random.random() < epsilon
         # Seleccion de accion.
@@ -175,7 +175,6 @@ class DQNAgent:
         return action
 
 
-    
     # Realiza un paso de optimizacion de la red Q.
     def optimize(self, batch_size: int):
         # Solo comienza a optimizar una vez que haya suficientes transiciones en la memoria.
@@ -222,8 +221,14 @@ class DQNAgent:
                     best_actions = self.policy_net(non_final_next_states).argmax(dim=1).unsqueeze(1)
                     next_state_values[non_final_mask] = self.target_net(non_final_next_states).gather(1, best_actions).squeeze(1)
                     '''---------------------------------------- LÓGICA DOUBLE DQN ----------------------------------------'''
-        expected_state_action_values = (next_state_values * self.gamma) + reward_batch.squeeze()
-
+        '''------------------------------------------------ LÓGICA NOISY NET----------------------------------------'''
+        # Si usamos N-step, gamma debe elevarse a la potencia de n_steps
+        if self.use_multi_step:
+            current_gamma = self.gamma ** self.n_steps
+        else:
+            current_gamma = self.gamma
+        '''------------------------------------------------ LÓGICA NOISY NET----------------------------------------'''
+        expected_state_action_values = (next_state_values * current_gamma) + reward_batch.squeeze()
         # Definimos la funcion de calculo para no repetir codigo en el if/else del AMP.
         def compute_loss():
             q_values = self.policy_net(state_batch)
