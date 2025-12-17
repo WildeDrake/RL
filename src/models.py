@@ -161,7 +161,6 @@ class DQN(nn.Module):
             # Pasamos la salida a traves de las capas lineales.
             x = self.linear_layers(x)
             # Retornamos la salida de la red.
-            return x
         else:
             '''---------------------------------------- LÓGICA DUELING DQN + C51----------------------------------------'''
             V = self.fc_value(x)
