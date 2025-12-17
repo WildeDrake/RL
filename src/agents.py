@@ -221,13 +221,13 @@ class DQNAgent:
                     best_actions = self.policy_net(non_final_next_states).argmax(dim=1).unsqueeze(1)
                     next_state_values[non_final_mask] = self.target_net(non_final_next_states).gather(1, best_actions).squeeze(1)
                     '''---------------------------------------- LÓGICA DOUBLE DQN ----------------------------------------'''
-        '''------------------------------------------------ LÓGICA NOISY NET----------------------------------------'''
+        '''------------------------------------------------ LÓGICA N-STEP----------------------------------------'''
         # Si usamos N-step, gamma debe elevarse a la potencia de n_steps
         if self.use_multi_step:
             current_gamma = self.gamma ** self.n_steps
         else:
             current_gamma = self.gamma
-        '''------------------------------------------------ LÓGICA NOISY NET----------------------------------------'''
+        '''------------------------------------------------ LÓGICA N-STEP----------------------------------------'''
         expected_state_action_values = (next_state_values * current_gamma) + reward_batch.squeeze()
         # Definimos la funcion de calculo para no repetir codigo en el if/else del AMP.
         def compute_loss():
