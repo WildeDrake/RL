@@ -14,13 +14,11 @@ def main():
     args = parser.parse_args()
     # Cargar parámetros desde el archivo de configuracion.
     config_data = load_parameters_from_config(args.config, args.mode)
-    # Determinar el tipo de agente
-    agent_type = config_data.get('agent')
     # Ejecutar el modo correspondiente.
     if args.mode == 'training':
-        train(config_data, agent_type.upper())
+        train(config_data)
     else:
-        test(config_data, agent_type.upper())
+        test(config_data)
 
 
 
