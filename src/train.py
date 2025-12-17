@@ -17,10 +17,13 @@ def train(config_data, agent_type):
     memory_size = int(config_data.get('memory_size'))                   # Tamaño de la memoria de experiencia.
     learning_rate = float(config_data.get('learning_rate'))             # Tasa de aprendizaje.
     initial_memory = int(config_data.get('initial_memory'))             # Memoria inicial antes de entrenar.
-    gamma = float(config_data.get('gamma'))                             # Factor de descuento.
+    gamma = float(config_data.get('gamma'))
+    gae_lambda = float(config_data.get('gae_lambda'))
+    clip_ratio = float(config_data.get('clip_ratio'))                   # Factor de descuento.
     target_update = int(config_data.get('target_update'))               # Frecuencia de actualizacion de la red objetivo.
     batch_size = int(config_data.get('batch_size'))                     # Tamaño del lote para el entrenamiento.
-    model_path = config_data.get('model_path')                          # Ruta para guardar el modelo entrenado.
+    model_path = config_data.get('model_path')
+    epochs = int(config_data.get('epochs'))                             # Número de épocas para PPO.
     episodes = int(config_data.get('episodes'))                         # Número de episodios.
     max_episode_length = int(config_data.get('max_episode_length'))     # Longitud maxima de un episodio.
     save_model_interval = int(config_data.get('save_model_interval'))   # Intervalo para guardar el modelo.
@@ -67,14 +70,15 @@ def train(config_data, agent_type):
             device=device,
             n_actions=env.action_space.n,
             lr=learning_rate,
-            clippping_epsilon=0.2,
+            clipping_epsilon=clip_ratio,
             total_memory=memory_size,
             initial_memory=initial_memory,
             gamma=gamma,
+            gae_lambda=gae_lambda,
             network_file=model_path,
             input_shape=env.observation_space.shape
         )
-        PPO_train_loop(env, agent, episodes, batch_size, max_episode_length, save_model_interval)
+        PPO_train_loop(env, agent, episodes, batch_size, epochs, max_episode_length, save_model_interval)
         print("Entrenando agente PPO")
     else:
         raise ValueError(f"Tipo de agente no reconocido: {agent_type}")

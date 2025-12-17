@@ -60,7 +60,7 @@ class ReplayBuffer:
 
 # En PPO difiere un poco el buffer: solo guarda la experiencia inmediata hecha por la politica reciente.
 class PPOBuffer: 
-    def __init__(self):
+    def __init__(self, device: str = "cpu"):
         self.states = []
         self.actions = []
         self.rewards = []
@@ -68,6 +68,7 @@ class PPOBuffer:
         self.values = [] # Valor estimado por el critico.
         self.log_probs = [] # Probabilidades logaritmicas.
         self.dones = [] # Indicador de finalizacion episodio.
+        self.device = device
     
     def push(self, state,action,reward,value,log_prob,done):
         self.states.append(state)
@@ -91,11 +92,11 @@ class PPOBuffer:
         return self.size
         
     def sample(self): # No se (?)
-        batch_states = torch.as_tensor(np.array(self.states), dtype=torch.float32)
-        batch_actions = torch.as_tensor(np.array(self.actions), dtype=torch.int64).unsqueeze(1)
-        batch_rewards = torch.as_tensor(np.array(self.rewards), dtype=torch.float32)
-        batch_values = torch.as_tensor(np.array(self.values), dtype=torch.float32).unsqueeze(1)
-        batch_log_probs = torch.as_tensor(np.array(self.log_probs), dtype=torch.float32).unsqueeze(1)
-        batch_dones = torch.as_tensor(np.array(self.dones), dtype=torch.bool)
-        non_final_mask = ~batch_dones
+        batch_states = torch.as_tensor(np.array(self.states), dtype=torch.float32, device=self.device)
+        batch_actions = torch.as_tensor(np.array(self.actions), dtype=torch.int64, device=self.device).unsqueeze(1)
+        batch_rewards = torch.as_tensor(np.array(self.rewards), dtype=torch.float32, device=self.device)
+        batch_values = torch.as_tensor(np.array(self.values), dtype=torch.float32, device=self.device)
+        batch_log_probs = torch.as_tensor(np.array(self.log_probs), dtype=torch.float32, device=self.device).unsqueeze(1)
+        batch_dones = torch.as_tensor(np.array(self.dones), dtype=torch.bool, device=self.device)
+        non_final_mask = ~batch_dones.bool()
         return batch_states, batch_actions, batch_rewards, batch_values, batch_log_probs, batch_dones, non_final_mask
