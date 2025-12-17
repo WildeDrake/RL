@@ -10,23 +10,36 @@ from utils import make_dqn_env, make_ppo_env
 
 
 # Funcion de test para el agente DQN.
-def testDQN(episodes, max_steps_per_episode, env, policy_net, device):
+def testLoopDQN(episodes, max_steps_per_episode, env, policy_net, device, use_distributional=False):
+    # Configuración auxiliar para C51
+    if use_distributional == False:
+        support = None
+    else:
+        support = torch.linspace(-10.0, 10.0, 51).to(device)
+
     # Ejecutar los episodios de prueba.
     for ep in range(episodes):
         total_reward = 0
         observation, _ = env.reset()
         # Bucle principal del episodio.
         for step in range(max_steps_per_episode):
-            # Convertir a tensor solo cuando se usa en la red.
-            obs_array = np.array(observation, copy=True)
-            obs_t = torch.tensor(observation, dtype=torch.float32, device=device).unsqueeze(0)
+            # Convertir la observación a tensor.
+            obs_t = torch.tensor(observation, dtype=torch.float32, device=device)
             # Agregar dimension de batch (C, H, W) -> (1, C, H, W).
             if obs_t.dim() == 3:
                 obs_t = obs_t.unsqueeze(0)
             # Seleccion de accion greedy.
             with torch.no_grad():
-                q_values = policy_net(obs_t)
-                action = q_values.argmax(dim=1).item()
+                if use_distributional == False:
+                    # Se obtiene la acción con el mayor valor Q.
+                    q_values = policy_net(obs_t)
+                    action = q_values.argmax(dim=1).item()
+                else:
+                    # La red devuelve probabilidades (1, n_actions, 51)
+                    dist = policy_net(obs_t)
+                    # Calculamos valor esperado: sum(prob * valor)
+                    expected_value = (dist * support).sum(dim=2)
+                    action = expected_value.argmax(dim=1).item()
             # Paso en el entorno.
             observation, reward, terminated, truncated, _ = env.step(action)
             total_reward += reward
@@ -38,41 +51,37 @@ def testDQN(episodes, max_steps_per_episode, env, policy_net, device):
 
 
 # Funcion de test para el agente PPO.
-def testPPO(episodes, max_steps_per_episode, env, policy_net, device):
+def testLoopPPO(episodes, max_steps_per_episode, env, policy_net, device):
     pass
 
 
 
 # Ejecutar el modo de prueba del agente Atari.
 def test(config_data):
+
+    # Cargar parametros de configuracion
     env_name = config_data.get('env')                                       # Nombre del entorno
     agent_type = config_data.get('agent')                                   # Tipo de agente (DQN o PPO)   
     model_path = config_data.get('model_path')                              # Ruta del modelo entrenado
     video_folder = config_data.get('video_folder')                          # Carpeta para guardar los videos
     episodes = int(config_data.get('episodes', fallback=5))                             # Numero de episodios de prueba
     max_steps_per_episode = int(config_data.get('max_steps_per_episode', fallback=2000))   # Longitud maxima de un episodio de prueba
-    if agent_type == DQN:
+    if agent_type == "DQN":
         use_dueling = config_data.getboolean('use_dueling', fallback=False)
         use_noisy = config_data.getboolean('use_noisy', fallback=False)
         use_distributional = config_data.getboolean('use_distributional', fallback=False)
-    # Cuda o MPS si esta disponible, de lo contrario CPU.
+
+    # Configuracion del dispositivo.
     if torch.cuda.is_available():
         device = torch.device("cuda")
     elif torch.backends.mps.is_available():
         device = torch.device("mps")
     else:
         device = torch.device("cpu")
+
     # Registro del entorno Atari.
     gym.register_envs(ale_py)
-    # Grabacion de video opcional.
-    if video_folder:
-        os.makedirs(video_folder, exist_ok=True)
-        env = gym.wrappers.RecordVideo(
-            env,
-            video_folder=video_folder,
-            episode_trigger=lambda ep_id: True,
-            disable_logger=True
-        )
+
     # Seleccion del modelo segun el tipo de agente.
     if agent_type == "DQN":
         print("Probando agente: DQN")
@@ -87,6 +96,17 @@ def test(config_data):
         policy_net = PPO(env.action_space.n, input_shape).to(device)
     else:
         raise ValueError(f"Tipo de agente no reconocido: {agent_type}")
+    
+    # Grabacion de video opcional.
+    if video_folder:
+        os.makedirs(video_folder, exist_ok=True)
+        env = gym.wrappers.RecordVideo(
+            env,
+            video_folder=video_folder,
+            episode_trigger=lambda ep_id: True,
+            disable_logger=True
+        )
+
     # Carga del modelo entrenado si existe.
     if os.path.exists(model_path):
         print(f"Cargando modelo desde '{model_path}'...")
@@ -95,13 +115,15 @@ def test(config_data):
         policy_net.load_state_dict(new_state_dict)
     else:
         print(f"No se encontro el modelo '{model_path}', se ejecutara sin cargar pesos.")
+
     # Modo evaluacion (sin gradientes).
     policy_net.eval()
-    # test del agente segun el tipo.
+
+    # Realizar Test del agente segun el tipo.
     if agent_type == "DQN":
-        testDQN(episodes, max_steps_per_episode, env, policy_net, device)
+        testLoopDQN(episodes, max_steps_per_episode, env, policy_net, device, use_distributional=use_distributional)
     elif agent_type == "PPO":
-        testPPO(episodes, max_steps_per_episode, env, policy_net, device)
+        testLoopPPO(episodes, max_steps_per_episode, env, policy_net, device)
     else:
         raise ValueError(f"Tipo de agente no reconocido: {agent_type}")
     
