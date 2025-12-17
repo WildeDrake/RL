@@ -28,14 +28,14 @@ class DQNAgent:
         target_update: int,     # La frecuencia con la que se actualiza la red objetivo.
         network_file=None,      # Un archivo para cargar los pesos de la red pre-entrenada.
         input_shape: tuple=None,# La forma de la entrada para la red neuronal.
-        #----------------------------------------- Parámetros Rainbow DQN -----------------------------------------#
+        #----------------------------------------- Flags Rainbow DQN -----------------------------------------#
         use_double: bool=False,         # Habilitar Double DQN
         use_dueling: bool=False,        # Habilitar Dueling DQN
         use_per: bool=False,            # Habilitar Prioritized Experience Replay
         use_multi_step: bool=False,     # Habilitar N-step learning
         use_noisy: bool=False,          # Habilitar Noisy Nets
         use_distributional: bool=False  # Habilitar Distributional RL (C51)
-        #----------------------------------------- Parámetros Rainbow DQN -----------------------------------------#
+        #----------------------------------------- Flags Rainbow DQN -----------------------------------------#
     ) -> None:
         '''----------------------------------------- Parámetros Rainbow DQN -----------------------------------------'''
         # Double
@@ -53,12 +53,20 @@ class DQNAgent:
         self.use_noisy = use_noisy
         # Distributional RL
         self.use_distributional = use_distributional
+        if self.use_distributional == False:
+            self.n_atoms = 1
+        else:
+            self.n_atoms = 51   # Número de átomos para C51.
+            self.v_min = -10.0  # Rango minimo de recompensa esperado.
+            self.v_max = 10.0   # Rango máximo de recompensa esperado.
+            self.support = torch.linspace(self.v_min, self.v_max, self.n_atoms).to(device) # Vector de soporte (los valores de las barras del histograma).
+            self.delta_z = (self.v_max - self.v_min) / (self.n_atoms - 1) # Ancho de cada barra del histograma.
         '''----------------------------------------- Parámetros Rainbow DQN -----------------------------------------'''
         self.n_actions = n_actions
         self.device = device
         # Inicializa las redes (policy y target).
-        self.policy_net = DQN(input_shape, n_actions, use_dueling=use_dueling, use_noisy=use_noisy).to(device)
-        self.target_net = DQN(input_shape, n_actions, use_dueling=use_dueling, use_noisy=use_noisy).to(device)
+        self.policy_net = DQN(input_shape, n_actions, use_dueling=use_dueling, use_noisy=use_noisy, use_distributional=use_distributional).to(device)
+        self.target_net = DQN(input_shape, n_actions, use_dueling=use_dueling, use_noisy=use_noisy, use_distributional=use_distributional).to(device)
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.target_net.eval()
         # Optimizador para la red de politica.
@@ -157,7 +165,7 @@ class DQNAgent:
             should_explore = random.random() < epsilon
         # Seleccion de accion.
         if not should_explore:
-            '''-------------------------------------------- LÓGICA DE NOISY NET ----------------------------------------'''
+            '''-------------------------------------------- LÓGICA DE NOISY NET + C51 ----------------------------------------'''
             # Accion greedy (o Noisy)
             with torch.no_grad():
                 # Asegurar shape
@@ -165,10 +173,17 @@ class DQNAgent:
                 # Si la red espera un batch y recibimos (C,H,W), añadimos dim 0
                 if obs_tensor.dim() == 3:
                     obs_tensor = obs_tensor.unsqueeze(0)
-                # Forward pass (GPU si corresponde)
-                qvals = self.policy_net(obs_tensor)
-                action = qvals.argmax(dim=1).item()
-            '''-------------------------------------------- LÓGICA DE NOISY NET ----------------------------------------'''
+                # Obtener predicción de la red
+                dist = self.policy_net(obs_tensor) # Shape: (1, n_actions, n_atoms) si es C51
+                # Seleccionar acción normal o en base a distribución
+                if self.use_distributional == False:
+                    action = dist.argmax(dim=1).item()
+                else:
+                    # Calculamos el valor esperado sum(prob * soporte)
+                    expected_value = (dist * self.support).sum(dim=2)
+                    # Seleccionamos la accion con mayor valor esperado
+                    action = expected_value.argmax(dim=1).item()
+            '''-------------------------------------------- LÓGICA DE NOISY NET + C51 ----------------------------------------'''
         else:
             # Accion aleatoria
             action = random.randrange(self.n_actions)
@@ -208,19 +223,6 @@ class DQNAgent:
         done_batch = torch.as_tensor(done, dtype=torch.float32, device=self.device)
         # Creamos la mascara de no finalizados.
         non_final_mask = (done_batch == 0).squeeze()
-        # Calculo del Target (Red Objetivo).
-        next_state_values = torch.zeros(batch_size, device=self.device)
-        # Solo calculamos Q para los estados no finales.
-        if non_final_mask.any():
-            with torch.no_grad():
-                non_final_next_states = next_state_batch[non_final_mask]
-                if self.use_double == False: # DQN clasico
-                    next_state_values[non_final_mask] = self.target_net(non_final_next_states).max(1)[0]
-                else:   # Double DQN
-                    '''---------------------------------------- LÓGICA DOUBLE DQN ----------------------------------------'''
-                    best_actions = self.policy_net(non_final_next_states).argmax(dim=1).unsqueeze(1)
-                    next_state_values[non_final_mask] = self.target_net(non_final_next_states).gather(1, best_actions).squeeze(1)
-                    '''---------------------------------------- LÓGICA DOUBLE DQN ----------------------------------------'''
         '''------------------------------------------------ LÓGICA N-STEP----------------------------------------'''
         # Si usamos N-step, gamma debe elevarse a la potencia de n_steps
         if self.use_multi_step:
@@ -228,23 +230,89 @@ class DQNAgent:
         else:
             current_gamma = self.gamma
         '''------------------------------------------------ LÓGICA N-STEP----------------------------------------'''
-        expected_state_action_values = (next_state_values * current_gamma) + reward_batch.squeeze()
+        # Calculamos los valores objetivo.
+        if self.use_distributional == False:
+            # Calculo del Target (Red Objetivo).
+            next_state_values = torch.zeros(batch_size, device=self.device)
+            # Solo calculamos Q para los estados no finales.
+            if non_final_mask.any():
+                with torch.no_grad():
+                    non_final_next_states = next_state_batch[non_final_mask]
+                    if self.use_double == False: # DQN clasico
+                        next_state_values[non_final_mask] = self.target_net(non_final_next_states).max(1)[0]
+                    else:   # Double DQN
+                        '''---------------------------------------- LÓGICA DOUBLE DQN ----------------------------------------'''
+                        best_actions = self.policy_net(non_final_next_states).argmax(dim=1).unsqueeze(1)
+                        next_state_values[non_final_mask] = self.target_net(non_final_next_states).gather(1, best_actions).squeeze(1)
+                        '''---------------------------------------- LÓGICA DOUBLE DQN ----------------------------------------'''
+            expected_state_action_values = (next_state_values * current_gamma) + reward_batch.squeeze()
+        else: 
+            '''-------------------------- LÓGICA C51 (DISTRIBUTIONAL) --------------------------'''
+            # Obtener la distribución del siguiente estado.
+            with torch.no_grad():
+                # Predicción de la red objetivo (batch, actions, atoms).
+                next_dist = self.target_net(next_state_batch)
+                if self.use_double:
+                    # Double DQN + C51: Usamos Policy para elegir acción, Target para distribución.
+                    next_action_dist = self.policy_net(next_state_batch)
+                    next_action = (next_action_dist * self.support).sum(2).argmax(1)
+                else:
+                    next_action = (next_dist * self.support).sum(2).argmax(1)
+                # Seleccionamos la distribución de la mejor acción.
+                next_dist = next_dist[range(batch_size), next_action] 
+                # Tz = r + gamma * z 
+                t_z = reward_batch.unsqueeze(1) + (1 - done_batch.unsqueeze(1)) * current_gamma * self.support.unsqueeze(0)
+                # Clamp Tz dentro de [v_min, v_max].
+                t_z = t_z.clamp(min=self.v_min, max=self.v_max)
+                # Indices proyectados en el soporte.
+                b = (t_z - self.v_min) / self.delta_z
+                l = b.floor().long()
+                u = b.ceil().long()
+                # Distribuir la probabilidad.
+                m_prob = torch.zeros(next_dist.size(), device=self.device)
+                offset = torch.linspace(0, (batch_size - 1) * self.n_atoms, batch_size).long().unsqueeze(1).expand(batch_size, self.n_atoms).to(self.device)
+                # Index add para distribuir las probabilidades.
+                m_prob.view(-1).index_add_(0, (l + offset).view(-1), (next_dist * (u.float() - b)).view(-1))
+                m_prob.view(-1).index_add_(0, (u + offset).view(-1), (next_dist * (b - l.float())).view(-1))
+            '''-------------------------- LÓGICA C51 (DISTRIBUTIONAL) --------------------------'''
+        
         # Definimos la funcion de calculo para no repetir codigo en el if/else del AMP.
         def compute_loss():
-            q_values = self.policy_net(state_batch)
-            state_action_values = q_values.gather(1, action_batch).squeeze()
-            if self.use_per == False:
-                loss = torch.nn.functional.smooth_l1_loss(state_action_values, expected_state_action_values)
-            else:
-                '''---------------------------------------- LÓGICA PER LOSS ----------------------------------------'''
-                # Error individual por muestra.
-                elementwise_loss = torch.nn.functional.smooth_l1_loss(state_action_values, expected_state_action_values, reduction='none')
-                # Loss ponderado por los pesos.
-                loss = (elementwise_loss * weights_tensor.squeeze()).mean()
-                # Calculamos TD Error para actualizar el árbo.
-                self.td_errors = torch.abs(state_action_values - expected_state_action_values).detach().cpu().numpy()
-                '''---------------------------------------- LÓGICA PER LOSS ----------------------------------------'''
+            if self.use_distributional == False:
+                q_values = self.policy_net(state_batch)
+                state_action_values = q_values.gather(1, action_batch).squeeze()
+                if self.use_per == False:
+                    loss = torch.nn.functional.smooth_l1_loss(state_action_values, expected_state_action_values)
+                else:
+                    '''---------------------------------------- LÓGICA PER LOSS ----------------------------------------'''
+                    # Error individual por muestra.
+                    elementwise_loss = torch.nn.functional.smooth_l1_loss(state_action_values, expected_state_action_values, reduction='none')
+                    # Loss ponderado por los pesos.
+                    loss = (elementwise_loss * weights_tensor.squeeze()).mean()
+                    # Calculamos TD Error para actualizar el árbo.
+                    self.td_errors = torch.abs(state_action_values - expected_state_action_values).detach().cpu().numpy()
+                    '''---------------------------------------- LÓGICA PER LOSS ----------------------------------------'''
+            else: 
+                '''-------------------------- LÓGICA C51 (DISTRIBUTIONAL) --------------------------'''
+                # Cross Entropy entre target y la predicción.
+                current_dist = self.policy_net(state_batch)
+                # Seleccionamos la distribución de la acción que tomamos.
+                current_dist = current_dist[range(batch_size), action_batch.squeeze()]
+                # Evitamos log(0) con un epsilon pequeño.
+                log_p = torch.log(current_dist + 1e-5)
+                # Cross Entropy: - sum(target * log(pred))
+                elementwise_loss = - (m_prob * log_p).sum(1)
+                # Loss final sin y con PER.
+                if self.use_per == False:
+                    loss = elementwise_loss.mean()
+                else:
+                    '''---------------------------------------- LÓGICA PER LOSS ----------------------------------------'''
+                    loss = (elementwise_loss * weights_tensor.squeeze()).mean()
+                    self.td_errors = elementwise_loss.detach().cpu().numpy()
+                    '''---------------------------------------- LÓGICA PER LOSS ----------------------------------------'''
+                '''-------------------------- LÓGICA C51 (DISTRIBUTIONAL) --------------------------'''
             return loss
+        
         # Optimizacion del modelo.
         self.optimizer.zero_grad(set_to_none=True)
         # Uso de AMP si corresponde.
