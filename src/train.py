@@ -2,7 +2,8 @@ import torch
 import gymnasium as gym
 import ale_py
 
-from agents import DQNAgent, PPOAgent
+from DQNAgent import DQNAgent
+from PPOAgent import PPOAgent
 from utils import make_dqn_env, make_ppo_env
 from trainingLoops import DQN_train_loop, PPO_train_loop
 

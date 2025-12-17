@@ -3,7 +3,8 @@ import os
 import gymnasium as gym
 from torch.utils.tensorboard import SummaryWriter
 
-from agents import DQNAgent, PPOAgent
+from DQNAgent import DQNAgent
+from PPOAgent import  PPOAgent
 
 
 
