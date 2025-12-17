@@ -5,7 +5,7 @@ import random
 import os
 import numpy as np
 
-from replayBuffer import ReplayBuffer, PPOBuffer
+from replayBuffer import ReplayBuffer, PrioritizedReplayBuffer, PPOBuffer
 from models import DQN, PPO
 
 
@@ -37,6 +37,7 @@ class DQNAgent:
         self.use_double = use_double
         self.use_dueling = use_dueling
         self.use_per = use_per
+        self.beta = 0.4  # Valor inicial de beta para PER
         '''----------------------------------------- Parámetros Rainbow DQN -----------------------------------------'''
 
         self.n_actions = n_actions
@@ -62,7 +63,10 @@ class DQNAgent:
         # Frecuencia de actualizacion de la red objetivo.
         self.target_update = target_update
         # Inicializa la memoria de repeticion.
-        self.memory = ReplayBuffer(capacity=total_memory, input_shape=input_shape, device=self.device)
+        if use_per == False:
+            self.memory = ReplayBuffer(capacity=total_memory, input_shape=input_shape, device=self.device)
+        else:
+            self.memory = PrioritizedReplayBuffer(capacity=total_memory)
         self.initial_memory = initial_memory
         # Si hay archivo de pesos existente, cargarlo correctamente.
         if network_file and os.path.exists(network_file):
@@ -114,66 +118,91 @@ class DQNAgent:
         return action
 
 
+    
     # Realiza un paso de optimizacion de la red Q.
-    def optimize(self, batch_size: int):  # batch_size: El tamaño del lote para el entrenamiento.
+    def optimize(self, batch_size: int):
         # Solo comienza a optimizar una vez que haya suficientes transiciones en la memoria.
-        if len(self.memory) < self.initial_memory or len(self.memory) < batch_size:
+        if len(self.memory) < self.initial_memory:
             return
-        # Muestrea un lote de transiciones de la memoria de repeticion (ya en device).
-        state_batch, action_batch, reward_batch, next_state_batch, done_batch, non_final_mask = self.memory.sample(batch_size)
+        # Muestrea un lote de transiciones de la memoria de repeticion.
+        if self.use_per == False:
+            # Muestreo normal 
+            state, action, reward, next_state, done, _ = self.memory.sample(batch_size)
+            indices, weights_tensor = None, None
+        else:
+            '''---------------------------------------- LÓGICA DE PER ----------------------------------------'''
+            # Actualizamos Beta
+            self.beta = min(1.0, self.beta + 1e-5)
+            # Muestrea.
+            state, action, reward, next_state, done, indices, weights = self.memory.sample(batch_size, self.beta)
+            # Convertimos los pesos a tensor para multiplicar el loss
+            weights_tensor = torch.as_tensor(weights, dtype=torch.float32, device=self.device).unsqueeze(1)
+            '''---------------------------------------- LÓGICA DE PER ----------------------------------------'''
+        # Convertimos los arrays de numpy a tensores.
+        state_batch = torch.as_tensor(state, dtype=torch.float32, device=self.device)
+        action_batch = torch.as_tensor(action, dtype=torch.int64, device=self.device)
+        reward_batch = torch.as_tensor(reward, dtype=torch.float32, device=self.device)
+        next_state_batch = torch.as_tensor(next_state, dtype=torch.float32, device=self.device)
+        done_batch = torch.as_tensor(done, dtype=torch.float32, device=self.device)
+        # Creamos la mascara de no finalizados.
+        non_final_mask = (done_batch == 0).squeeze()
         # Calculo del Target (Red Objetivo).
         next_state_values = torch.zeros(batch_size, device=self.device)
         # Solo calculamos Q para los estados no finales.
         if non_final_mask.any():
-                with torch.no_grad():
-                    # Obtener los valores maximos de Q para los siguientes estados desde la red objetivo.
-                    non_final_next_states = next_state_batch[non_final_mask]
-                    if self.use_double == False: # DQN clasico
-                        # Calculo de los valores maximos de Q para los siguientes estados.
-                        next_state_values[non_final_mask] = self.target_net(non_final_next_states).max(1)[0]
-                    else:   # Double DQN
-                        '''---------------------------------------- LÓGICA DOUBLE DQN ----------------------------------------'''
-                        # Selección de acción: La Red de Política (policy_net) elige la mejor acción para los siguientes estados.
-                        best_actions = self.policy_net(non_final_next_states).argmax(dim=1).unsqueeze(1)
-                        # Evaluación de acción: La Red Objetivo (target_net) evalúa el valor Q de esas acciones seleccionadas.
-                        next_state_values[non_final_mask] = self.target_net(non_final_next_states).gather(1, best_actions).squeeze(1)
-                        '''---------------------------------------- LÓGICA DOUBLE DQN ----------------------------------------'''
-        # Calculo del valor esperado de la accion.
-        expected_state_action_values = (next_state_values * self.gamma) + reward_batch
+            with torch.no_grad():
+                non_final_next_states = next_state_batch[non_final_mask]
+                if self.use_double == False: # DQN clasico
+                    next_state_values[non_final_mask] = self.target_net(non_final_next_states).max(1)[0]
+                else:   # Double DQN
+                    '''---------------------------------------- LÓGICA DOUBLE DQN ----------------------------------------'''
+                    best_actions = self.policy_net(non_final_next_states).argmax(dim=1).unsqueeze(1)
+                    next_state_values[non_final_mask] = self.target_net(non_final_next_states).gather(1, best_actions).squeeze(1)
+                    '''---------------------------------------- LÓGICA DOUBLE DQN ----------------------------------------'''
+        expected_state_action_values = (next_state_values * self.gamma) + reward_batch.squeeze()
+
         # Definimos la funcion de calculo para no repetir codigo en el if/else del AMP.
         def compute_loss():
-            # Calcula los valores Q actuales para las acciones tomadas.
             q_values = self.policy_net(state_batch)
-            state_action_values = q_values.gather(1, action_batch)
-            # Huber Loss (SmoothL1).
-            loss = torch.nn.functional.smooth_l1_loss(state_action_values, expected_state_action_values.unsqueeze(1))
+            state_action_values = q_values.gather(1, action_batch).squeeze()
+            if self.use_per == False:
+                loss = torch.nn.functional.smooth_l1_loss(state_action_values, expected_state_action_values)
+            else:
+                '''---------------------------------------- LÓGICA PER LOSS ----------------------------------------'''
+                # Error individual por muestra.
+                elementwise_loss = torch.nn.functional.smooth_l1_loss(state_action_values, expected_state_action_values, reduction='none')
+                # Loss ponderado por los pesos.
+                loss = (elementwise_loss * weights_tensor.squeeze()).mean()
+                # Calculamos TD Error para actualizar el árbo.
+                self.td_errors = torch.abs(state_action_values - expected_state_action_values).detach().cpu().numpy()
+                '''---------------------------------------- LÓGICA PER LOSS ----------------------------------------'''
             return loss
         # Optimizacion del modelo.
-        self.optimizer.zero_grad(set_to_none=True) # set_to_none es un poco mas rapido.
-        # Usar AMP si esta habilitado.
+        self.optimizer.zero_grad(set_to_none=True)
+        # Uso de AMP si corresponde.
         if self.use_amp:
             with torch.amp.autocast("cuda"):
                 loss = compute_loss()
-            # Backward y step con escalado.
             self.scaler.scale(loss).backward()
             self.scaler.unscale_(self.optimizer)
-            clip_grad_norm_(self.policy_net.parameters(), max_norm=1.0) # Evita explosion de gradientes.
+            torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), max_norm=1.0)
             self.scaler.step(self.optimizer)
             self.scaler.update()
-        else:   # Sin AMP.
+        else:
             loss = compute_loss()
             loss.backward()
-            clip_grad_norm_(self.policy_net.parameters(), max_norm=1.0)
+            torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), max_norm=1.0)
             self.optimizer.step()
-        # Actualizacion Soft/Hard de la Target Network.
+        '''---------------------------------------- LÓGICA PER LOSS ----------------------------------------'''
+        if self.use_per:
+            self.memory.update_priorities(indices, self.td_errors)
+        '''---------------------------------------- LÓGICA PER LOSS ----------------------------------------'''
+        # Actualizacion Soft/Hard de la Target Network..
         if self.steps_done % self.target_update == 0:
             self.target_net.load_state_dict(self.policy_net.state_dict())
 
 
 
-# Agente de Double DQN para entornos Atari.
-class RainbowDQNAgent(DQNAgent):
-    pass
 
 # Agente PPO para entornos Atari.
 class PPOAgent:

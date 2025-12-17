@@ -26,7 +26,8 @@ def train(config_data, agent_type):
     save_model_interval = int(config_data.get('save_model_interval'))   # Intervalo para guardar el modelo.
     use_double = config_data.getboolean('use_double', fallback=False)   # Habilitar Double DQN
     use_dueling = config_data.getboolean('use_dueling', fallback=False) # Habilitar Dueling DQN
-    use_per = config_data.getboolean('use_per', fallback=False)         # Habilitar Prioritized Experience Replay   
+    use_per = config_data.getboolean('use_per', fallback=False)         # Habilitar Prioritized Experience Replay
+    run_name = config_data.get('run_name', fallback='default_run')      # Nombre de la carpeta 
     # Cuda o MPS si esta disponible, de lo contrario CPU.
     if torch.cuda.is_available():
         device = torch.device("cuda")
@@ -56,9 +57,9 @@ def train(config_data, agent_type):
             input_shape=env.observation_space.shape,
             use_double=use_double,
             use_dueling=use_dueling,
-            use_per=use_per
+            use_per=use_per,
         )
-        DQN_train_loop(env, agent, episodes, batch_size, max_episode_length, save_model_interval)
+        DQN_train_loop(env, agent, episodes, batch_size, max_episode_length, save_model_interval, run_name)
         print("Entrenando agente DQN")
     elif agent_type == "PPO":
         env = make_ppo_env(env_name, seed=42)
@@ -75,7 +76,7 @@ def train(config_data, agent_type):
             network_file=model_path,
             input_shape=env.observation_space.shape
         )
-        PPO_train_loop(env, agent, episodes, batch_size, max_episode_length)
+        PPO_train_loop(env, agent, episodes, batch_size, max_episode_length, run_name)
         print("Entrenando agente PPO")
     else:
         raise ValueError(f"Tipo de agente no reconocido: {agent_type}")

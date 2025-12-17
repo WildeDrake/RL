@@ -8,11 +8,11 @@ from agents import DQNAgent, PPOAgent
 
 
 # Función principal de entrenamiento del agente Atari.
-def DQN_train_loop(env: gym.Env, agent: DQNAgent, n_episodes: int, batch_size: int, max_episode_length: int, save_model_interval: int):
+def DQN_train_loop(env: gym.Env, agent: DQNAgent, n_episodes: int, batch_size: int, max_episode_length: int, save_model_interval: int, run_name: str):
     # Crea el escritor de TensorBoard.
-    writer = SummaryWriter('runs/'+ agent.__class__.__name__) 
+    writer = SummaryWriter('runs/'+ run_name) 
     # Crear directorio de modelos si no existe.
-    makedirs = os.path.join('models', agent.__class__.__name__)
+    makedirs = os.path.join('models', run_name)
     if not os.path.exists(makedirs):
         os.makedirs(makedirs)
     # episodio inicial.
@@ -64,8 +64,8 @@ def DQN_train_loop(env: gym.Env, agent: DQNAgent, n_episodes: int, batch_size: i
 
 
 # Función principal de entrenamiento del agente PPO.
-def PPO_train_loop(env: gym.Env, agent: PPOAgent, n_episodes: int, batch_size: int, max_episode_length: int):
-    writer = SummaryWriter('runs/'+ agent.__class__.__name__) 
+def PPO_train_loop(env: gym.Env, agent: PPOAgent, n_episodes: int, batch_size: int, max_episode_length: int, run_name: str):
+    writer = SummaryWriter('runs/'+ run_name) 
     start_episode = 0
     for episode in range(start_episode, n_episodes):
         # Reinicia el entorno

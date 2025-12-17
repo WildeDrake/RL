@@ -1,6 +1,8 @@
 import numpy as np
 import torch
 
+from utils import SumTree
+
 
 
 # Definicion del buffer de repeticion.
@@ -19,7 +21,6 @@ class ReplayBuffer:
         self.rewards = np.zeros(capacity, dtype=np.float32)
         self.dones = np.zeros(capacity, dtype=np.bool_)
 
-
     # Guarda una transicion en el buffer.
     def push(self, state, action, reward, next_state, done):
         # Si next_state es None, lo reemplazamos por el estado actual.
@@ -35,8 +36,7 @@ class ReplayBuffer:
         self.ptr = (self.ptr + 1) % self.capacity
         self.size = min(self.size + 1, self.capacity)
 
-
-    #retorna un lote aleatorio de transiciones.
+    # Retorna un lote aleatorio de transiciones.
     def sample(self, batch_size: int):
         # Generamos indices aleatorios una sola vez.
         idxs = np.random.randint(0, self.size, size=batch_size)
@@ -51,11 +51,76 @@ class ReplayBuffer:
         # retornamos el lote completo.
         return batch_states, batch_actions.unsqueeze(1), batch_rewards, batch_next_states, batch_dones, non_final_mask
 
-
     # Retorna el tamaño actual del buffer.
     def __len__(self):
         return self.size
 
+
+
+# Definición de buffer de repeticion con Prioridades.
+class PrioritizedReplayBuffer:
+    # Constructor.
+    def __init__(self, capacity, alpha=0.6):
+        self.tree = SumTree(capacity)
+        self.capacity = capacity
+        self.alpha = alpha  # Cuánto priorizamos (0 = nada, 1 = full)
+        self.epsilon = 0.01 # Pequeño valor para que ninguna prioridad sea 0
+    
+    # Guarda una transicion en el buffer.
+    def push(self, state, action, reward, next_state, done):
+        # Guardamos la transicion.
+        transition = (state, action, reward, next_state, done)
+        # Al añadir una nueva experiencia, le damos la prioridad máxima actual para asegurar que se entrene al menos una vez.
+        max_p = np.max(self.tree.tree[-self.tree.capacity:])
+        if max_p == 0:
+            max_p = 1.0
+        # Añadimos la transicion con la prioridad maxima.
+        self.tree.add(max_p, transition)
+
+    # Muestra un lote de transiciones, junto con sus indices y pesos IS.
+    def sample(self, batch_size, beta=0.4):
+        batch_indices = []
+        batch_priorities = []
+        batch_transitions = []
+        # Dividimos el rango total de prioridades en segmentos
+        segment = self.tree.total() / batch_size
+        # Para cada segmento, muestreamos una prioridad.
+        for i in range(batch_size):
+            a = segment * i
+            b = segment * (i + 1)
+            s = np.random.uniform(a, b)
+            # Obtenemos la transicion correspondiente a esa prioridad.
+            (idx, p, data) = self.tree.get(s)
+            # Guardamos los datos del batch.
+            batch_indices.append(idx)
+            batch_priorities.append(p)
+            batch_transitions.append(data)
+        # Desempaquetar batch.
+        state_batch, action_batch, reward_batch, next_state_batch, done_batch = zip(*batch_transitions)
+        # Convertir a numpy arrays eficientes.
+        state_batch = np.array(state_batch)
+        action_batch = np.array(action_batch).reshape(-1, 1)
+        reward_batch = np.array(reward_batch)
+        next_state_batch = np.array(next_state_batch)
+        done_batch = np.array(done_batch)
+        # Calcular los pesos de importancia.
+        sampling_probabilities = np.array(batch_priorities) / self.tree.total()
+        is_weights = np.power(self.tree.n_entries * sampling_probabilities, -beta)
+        is_weights /= is_weights.max() # Normalizar para estabilidad
+        # Retornamos los índices y los pesos
+        return (state_batch, action_batch, reward_batch, next_state_batch, done_batch, 
+                batch_indices, np.array(is_weights, dtype=np.float32))
+
+    # Actualiza las prioridades de las transiciones muestreadas.
+    def update_priorities(self, indices, errors):
+        for idx, error in zip(indices, errors):
+            p = (error + self.epsilon) ** self.alpha
+            self.tree.update(idx, p)
+
+    # Retorna el tamaño actual del buffer.
+    def __len__(self):
+        return self.tree.n_entries
+    
 
 
 # En PPO difiere un poco el buffer: solo guarda la experiencia inmediata hecha por la politica reciente.
