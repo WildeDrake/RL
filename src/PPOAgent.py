@@ -1,14 +1,10 @@
 import torch
 from torch.optim import Adam
-from torch.nn.utils import clip_grad_norm_
-import random
 import os
 import numpy as np
-from collections import deque
 
 from Buffers import PPOBuffer
 from models import PPO
-
 
 
 # Agente PPO para entornos Atari.
@@ -123,7 +119,7 @@ class PPOAgent:
         
         return action_item, log_prob_item, value_item
     
-    
+
     def optimize(self, batch_size: int, n_epochs_ppo: int):
         
         # Solo comienza a optimizar una vez que haya suficientes transiciones en la memoria de repeticion.
@@ -224,9 +220,6 @@ class PPOAgent:
                 
                 self.optimizer.zero_grad(set_to_none=True)
                 total_loss.backward()
-                
-                # Gradient clipping (evita actualizaciones demasiado grandes)
-                torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), max_norm=0.5)
                 
                 self.optimizer.step()
 
