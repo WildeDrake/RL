@@ -123,6 +123,7 @@ class PPOAgent:
         
         return action_item, log_prob_item, value_item
     
+    
     def optimize(self, batch_size: int, n_epochs_ppo: int):
         
         # Solo comienza a optimizar una vez que haya suficientes transiciones en la memoria de repeticion.
