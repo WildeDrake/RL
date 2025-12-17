@@ -43,19 +43,18 @@ def testPPO(episodes, max_steps_per_episode, env, policy_net, device):
 
 
 
-# Funcion de test para el agente RainbowDQN.
-def testRainbowDQN(episodes, max_steps_per_episode, env, policy_net, device):
-    pass
-
-
-
 # Ejecutar el modo de prueba del agente Atari.
-def test(config_data, agent_type):
+def test(config_data):
     env_name = config_data.get('env')                                       # Nombre del entorno
+    agent_type = config_data.get('agent')                                   # Tipo de agente (DQN o PPO)   
     model_path = config_data.get('model_path')                              # Ruta del modelo entrenado
     video_folder = config_data.get('video_folder')                          # Carpeta para guardar los videos
-    episodes = int(config_data.get('episodes'))                             # Numero de episodios de prueba
-    max_steps_per_episode = int(config_data.get('max_steps_per_episode'))   # Longitud maxima de un episodio de prueba
+    episodes = int(config_data.get('episodes', fallback=5))                             # Numero de episodios de prueba
+    max_steps_per_episode = int(config_data.get('max_steps_per_episode', fallback=2000))   # Longitud maxima de un episodio de prueba
+    if agent_type == DQN:
+        use_dueling = config_data.getboolean('use_dueling', fallback=False)
+        use_noisy = config_data.getboolean('use_noisy', fallback=False)
+        use_distributional = config_data.getboolean('use_distributional', fallback=False)
     # Cuda o MPS si esta disponible, de lo contrario CPU.
     if torch.cuda.is_available():
         device = torch.device("cuda")
@@ -79,15 +78,13 @@ def test(config_data, agent_type):
         print("Probando agente: DQN")
         env = make_dqn_env(env_name)
         input_shape = env.observation_space.shape
-        policy_net = DQN(env.action_space.n, input_shape).to(device)
+        n_actions = env.action_space.n
+        policy_net = DQN(input_shape, n_actions, use_dueling=use_dueling, use_noisy=use_noisy, use_distributional=use_distributional).to(device)
     elif agent_type == "PPO":
         print("Probando agente: PPO")
         env = make_ppo_env(env_name)
         input_shape = env.observation_space.shape
         policy_net = PPO(env.action_space.n, input_shape).to(device)
-    elif agent_type == "Rainbow":
-        print("Probando agente: Rainbow")
-        # Aca rainbow
     else:
         raise ValueError(f"Tipo de agente no reconocido: {agent_type}")
     # Carga del modelo entrenado si existe.
@@ -105,8 +102,6 @@ def test(config_data, agent_type):
         testDQN(episodes, max_steps_per_episode, env, policy_net, device)
     elif agent_type == "PPO":
         testPPO(episodes, max_steps_per_episode, env, policy_net, device)
-    elif agent_type == "Rainbow":
-        testRainbowDQN(episodes, max_steps_per_episode, env, policy_net, device)
     else:
         raise ValueError(f"Tipo de agente no reconocido: {agent_type}")
     

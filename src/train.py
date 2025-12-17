@@ -9,10 +9,11 @@ from trainingLoops import DQN_train_loop, PPO_train_loop
 
 
 
-def train(config_data, agent_type):
+def train(config_data):
     # Cargar parametros de configuracion
     '''---------------------------------------- PARAMETROS DE CONFIGURACION GENERALES----------------------------------------'''
     env_name = config_data.get('env')                                                # Nombre del entorno..
+    agent_type = config_data.get('agent')                                            # Tipo de agente: DQN, PPO
     model_path = config_data.get('model_path')                                       # Ruta para guardar/cargar el modelo.  
     run_name = config_data.get('run_name')                                           # Directorio para guardar graficos del train.
     save_model_interval = int(config_data.get('save_model_interval', fallback=500))  # Intervalo de guardado del modelo.
