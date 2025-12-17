@@ -22,6 +22,7 @@ class PPOAgent:
         total_memory: int,  # La capacidad maxima de la memoria de repeticion.
         initial_memory: int,  # La numero minimo de transiciones requeridas en la memoria de repeticion antes de que comience el aprendizaje.
         gamma: float,  # El factor de descuento para las recompensas futuras en la actualizacion de Q-learning.
+        gae_lambda: float,  # El factor de descuento para la ventaja generalizada (GAE).
         network_file=None,  # Un archivo para cargar los pesos de la red pre-entrenada.
         input_shape=None  # La forma de la entrada para la red neuronal.
     ) -> None:
@@ -38,8 +39,9 @@ class PPOAgent:
         self.steps_done = 0
         self.clipping_epsilon = clipping_epsilon
         self.gamma = gamma
+        self.gae_lambda = gae_lambda
         # Inicializa la memoria de repeticion.
-        self.memory = PPOBuffer(capacity=total_memory, device=self.device)
+        self.memory = PPOBuffer(device=device)
         self.initial_memory = initial_memory
         # Si hay archivo de pesos existente, cargarlo correctamente
         if network_file and os.path.exists(network_file):
@@ -52,40 +54,34 @@ class PPOAgent:
         self.input_shape = input_shape
 
     def GAE(self, rewards, masks, values, next_value, gamma=0.99, tau=0.9):
-        # Asegurar que son listas para poder indexar
-        if isinstance(rewards, torch.Tensor):
-            rewards = rewards.cpu().tolist()
-        if isinstance(masks, torch.Tensor):
-            masks = masks.cpu().tolist()
-        if isinstance(values, torch.Tensor):
-            values_list = values.cpu().tolist()
-        else:
-            values_list = list(values)
+        # Convertir a numpy arrays para procesamiento
+        rewards_np = rewards.cpu().numpy() if isinstance(rewards, torch.Tensor) else np.array(rewards)
+        masks_np = masks.cpu().numpy() if isinstance(masks, torch.Tensor) else np.array(masks)
+        values_np = values.cpu().numpy() if isinstance(values, torch.Tensor) else np.array(values)
         
         # Inicializar listas para GAE
-        gae = 0
+        gae = 0.0
         gae_advantages = []
         
         # Iterar hacia atrás sobre los pasos
-        for step in reversed(range(len(rewards))):
+        for step in reversed(range(len(rewards_np))):
             # Valor del siguiente estado
-            next_value_step = values_list[step + 1] if step + 1 < len(values_list) else next_value
+            next_value_step = values_np[step + 1] if step + 1 < len(values_np) else next_value
             
             # Temporal difference error (delta)
-            delta = rewards[step] + gamma * next_value_step * masks[step] - values_list[step]
+            delta = float(rewards_np[step]) + gamma * float(next_value_step) * float(masks_np[step]) - float(values_np[step])
             
             # GAE recursivo: g_t = δ_t + (γλ) * mask_t * g_{t+1}
-            gae = delta + gamma * tau * masks[step] * gae
+            gae = delta + gamma * tau * float(masks_np[step]) * gae
             
             # Insertar al inicio (porque iteramos hacia atrás)
             gae_advantages.insert(0, gae)
         
         # Convertir a tensores
         advantages = torch.tensor(gae_advantages, device=self.device, dtype=torch.float32)
-        values_tensor = torch.tensor(values_list, device=self.device, dtype=torch.float32)
         
         # Retornos = advantages + valores originales
-        returns = advantages + values_tensor
+        returns = advantages + values
         
         return advantages, returns
     
@@ -95,28 +91,37 @@ class PPOAgent:
         # Almacena la transicion en la memoria.
         self.memory.push(obs, action, reward, value, log_prob, done)
 
-    def next_action(
-        self,
-        observation: torch.Tensor,  # La observacion/estado actual
-        epsilon: float               # epsilon como float
-    ) -> int:
+    def next_action(self, observation: np.ndarray) -> tuple:
+        # Actualiza el contador de pasos.
         self.steps_done += 1
-        if random.random() > epsilon:
-            # Accion greedy
-            with torch.no_grad():
-                # asegurar shape (si la obs viene sin batch dim)
-                obs = observation.to(self.device, dtype=torch.float32)
-                # Si la red espera un batch y recibimos (C,H,W), añadimos dim 0
-                if obs.dim() == 3:
-                    obs = obs.unsqueeze(0)  # (1, C, H, W)
-                # Forward pass (GPU si corresponde)
-                logits, value = self.policy_net(obs)
-                action_probs = torch.softmax(logits, dim=1)
-                action = action_probs.multinomial(num_samples=1).item()
-        else:
-            # Accion aleatoria
-            action = random.randrange(self.n_actions)
-        return action
+        
+        with torch.no_grad():
+            # Convertir observación a tensor
+            obs = torch.as_tensor(observation, device=self.device, dtype=torch.float32)
+            
+            # Asegurar que tiene dimensión batch (batch, C, H, W)
+            # Si viene como (C, H, W), agregar dimensión batch
+            if obs.dim() == 3:
+                obs = obs.unsqueeze(0)  # (1, C, H, W)
+            
+            # Forward pass para obtener logits (política) y valor
+            logits, value = self.policy_net(obs)
+            
+            # Crear distribución de probabilidad sobre las acciones
+            dist = torch.distributions.Categorical(logits=logits)
+            
+            # Muestrear acción de la distribución
+            action = dist.sample()
+            
+            # Calcular log de la probabilidad de la acción muestreada
+            log_prob = dist.log_prob(action)
+            
+            # Extraer valores escalares
+            action_item = action.item()
+            log_prob_item = log_prob.item()
+            value_item = value.squeeze().item()
+        
+        return action_item, log_prob_item, value_item
     
     def optimize(self, batch_size: int, n_epochs_ppo: int):
         
@@ -125,23 +130,30 @@ class PPOAgent:
             return
         
         # Muestrea un lote de transiciones de la memoria de repeticion (ya en device).
-        state_batch, action_batch, reward_batch, values_batch, log_probs_batch, dones_batch, non_final_mask = self.memory.sample(batch_size)
+        state_batch, action_batch, reward_batch, values_batch, log_probs_batch, dones_batch, non_final_mask = self.memory.sample()
         
         # Calcular el valor del próximo estado para bootstrapping en GAE
         with torch.no_grad():
-            # Usar el último estado no-terminal para obtener next_value
-            last_state = state_batch[-1].unsqueeze(0) if state_batch.dim() == 3 else state_batch[-1:].unsqueeze(0)
+            # Usar el último estado para obtener next_value
+            # state_batch ya tiene forma [batch_size, 4, 84, 84], así que usamos el último directamente
+            if state_batch.dim() == 4:
+                # Si tiene 4 dimensiones [batch, C, H, W], tomar el último y agregar batch dim
+                last_state = state_batch[-1].unsqueeze(0).to(self.device)  # [1, 4, 84, 84]
+            else:
+                # Si tiene 3 dimensiones [C, H, W], agregar batch dim
+                last_state = state_batch[-1].unsqueeze(0).to(self.device)  # [1, C, H, W]
+            
             _, next_value = self.policy_net(last_state)
             next_value = next_value.item() if dones_batch[-1].item() == 0 else 0.0
         
         # Calcular ventajas y retornos usando GAE
         advantages, returns = self.GAE(
             rewards=reward_batch,
-            masks=1.0 - dones_batch,  # Pasar como tensores, la función los convertirá
+            masks=(~dones_batch).float(),  # Invertir dones (1.0 donde no hay terminal, 0.0 donde sí)
             values=values_batch,
             next_value=next_value,
             gamma=self.gamma,
-            tau=0.9
+            tau=self.gae_lambda,
         )
         
         # Tamaño total del dataset
