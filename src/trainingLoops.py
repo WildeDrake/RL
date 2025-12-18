@@ -85,8 +85,6 @@ def PPO_train_loop(env: gym.Env, agent: PPOAgent, n_episodes: int, batch_size: i
             done = truncated or terminated
             # Almacena la transición con value y log_prob.
             agent.new_transition(observation, action, reward, next_observation, done, value, log_prob)
-            # Optimiza la red PPO.
-            agent.optimize(batch_size, epochs)
             # Actualiza recompensas y contadores.
             total_reward += reward
             observation = next_observation
@@ -94,6 +92,8 @@ def PPO_train_loop(env: gym.Env, agent: PPOAgent, n_episodes: int, batch_size: i
             # Si el episodio ha terminado, salir del bucle.
             if done:
                 break
+        # Optimiza la red PPO. A diferencia de DQN, se hace una vez por episodio, para poder recolectar suficientes experiencias
+        agent.optimize(batch_size, epochs)
         # Loguea en TensorBoard.
         writer.add_scalar('Recompensa Total por Episodio', float(total_reward), episode)
         writer.add_scalar('Pasos por Episodio', steps, episode)

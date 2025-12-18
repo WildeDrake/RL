@@ -155,7 +155,9 @@ class PPOAgent:
         
         # Tamaño total del dataset
         dataset_size = len(reward_batch)
-
+        
+        # Normalizar ventajas para estabilidad numérica, antes de dividir en mini-batches
+        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
         for epoch in range(n_epochs_ppo):
             # Generar indices aleatorios para mini-batches
             indices = torch.randperm(dataset_size, device=self.device)
@@ -171,10 +173,7 @@ class PPOAgent:
                 mb_old_log_probs = log_probs_batch[mb_indices]
                 mb_advantages = advantages[mb_indices]
                 mb_returns = returns[mb_indices]
-                
-                # Normalizar ventajas para estabilidad numérica
-                mb_advantages = (mb_advantages - mb_advantages.mean()) / (mb_advantages.std() + 1e-8)
-                
+            
                 # Forward pass con la politica actual
                 logits, values_pred = self.policy_net(mb_states)
                 

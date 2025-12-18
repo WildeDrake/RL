@@ -158,10 +158,10 @@ class PPOBuffer:
         
     def sample(self): # No se (?)
         batch_states = torch.as_tensor(np.array(self.states), dtype=torch.float32, device=self.device)
-        batch_actions = torch.as_tensor(np.array(self.actions), dtype=torch.int64, device=self.device).unsqueeze(1)
+        batch_actions = torch.as_tensor(np.array(self.actions), dtype=torch.int64, device=self.device)
         batch_rewards = torch.as_tensor(np.array(self.rewards), dtype=torch.float32, device=self.device)
         batch_values = torch.as_tensor(np.array(self.values), dtype=torch.float32, device=self.device)
-        batch_log_probs = torch.as_tensor(np.array(self.log_probs), dtype=torch.float32, device=self.device).unsqueeze(1)
+        batch_log_probs = torch.as_tensor(np.array(self.log_probs), dtype=torch.float32, device=self.device)
         batch_dones = torch.as_tensor(np.array(self.dones), dtype=torch.bool, device=self.device)
         non_final_mask = ~batch_dones.bool()
         return batch_states, batch_actions, batch_rewards, batch_values, batch_log_probs, batch_dones, non_final_mask
