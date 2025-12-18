@@ -49,15 +49,11 @@ def DQN_train_loop(env: gym.Env, agent: DQNAgent, n_episodes: int, batch_size: i
                 break
         # Loguea en TensorBoard.
         writer.add_scalar('Recompensa Total por Episodio', float(total_reward), episode)
-        if not agent.use_noisy:
-            writer.add_scalar('Epsilon por Episodio', agent.epsilon(episode=episode), episode)
+        writer.add_scalar('Epsilon por Episodio', agent.epsilon(episode=episode), episode)
         writer.add_scalar('Pasos por Episodio', steps, episode)
         # Print de progreso en consola cada cierto tiempo.
         if episode % 20 == 0:
-            if agent.use_noisy:
-                print(f"Episodio: {episode} | Recompensa: {total_reward:.2f}")
-            else:
-                print(f"Episodio: {episode} | Recompensa: {total_reward:.2f} | Epsilon: {eps:.3f}")
+            print(f"Episodio: {episode} | Recompensa: {total_reward:.2f} | Epsilon: {eps:.3f}")
         # Guarda el modelo cada n episodios.
         if episode % save_model_interval == 0 and episode > 0:
             torch.save(agent.policy_net.state_dict(), os.path.join(makedirs, f'in_progress_model_{episode}.pth'))

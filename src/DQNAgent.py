@@ -37,7 +37,7 @@ class DQNAgent:
         use_distributional: bool=False  # Habilitar Distributional RL (C51)
         #----------------------------------------- Flags Rainbow DQN -----------------------------------------#
     ) -> None:
-        '''----------------------------------------- Parámetros Rainbow DQN -----------------------------------------'''
+        '''----------------------------------------- Parametros Rainbow DQN -----------------------------------------'''
         # Double
         self.use_double = use_double
         # Dueling
@@ -56,12 +56,12 @@ class DQNAgent:
         if self.use_distributional == False:
             self.n_atoms = 1
         else:
-            self.n_atoms = 51   # Número de átomos para C51.
-            self.v_min = -10.0  # Rango minimo de recompensa esperado.
-            self.v_max = 10.0   # Rango máximo de recompensa esperado.
+            self.n_atoms = 51   # Número de atomos para C51.
+            self.v_min = 0.0  # Rango minimo de recompensa esperado.
+            self.v_max = 20.0   # Rango maximo de recompensa esperado.
             self.support = torch.linspace(self.v_min, self.v_max, self.n_atoms).to(device) # Vector de soporte (los valores de las barras del histograma).
             self.delta_z = (self.v_max - self.v_min) / (self.n_atoms - 1) # Ancho de cada barra del histograma.
-        '''----------------------------------------- Parámetros Rainbow DQN -----------------------------------------'''
+        '''----------------------------------------- Parametros Rainbow DQN -----------------------------------------'''
         self.n_actions = n_actions
         self.device = device
         # Inicializa las redes (policy y target).
@@ -103,6 +103,8 @@ class DQNAgent:
 
     # Almacena una nueva transicion en la memoria de repeticion.
     def new_transition(self, observation, action, reward, next_observation, done):
+        # Normalizacion de recompensa
+        reward = float(reward)/5.0  
         # Convierte las observaciones a numpy arrays si es necesario.
         obs = np.array(observation, copy=False)
         # Convierte la siguiente observacion a numpy array si no es None.
@@ -115,7 +117,7 @@ class DQNAgent:
             # Guardar en buffer temporal
             transition = (obs, action, reward, next_obs, done)
             self.n_step_buffer.append(transition)
-            # Si el buffer está lleno, calculamos la recompensa acumulada
+            # Si el buffer esta lleno, calculamos la recompensa acumulada
             if len(self.n_step_buffer) == self.n_steps:
                 reward_n, next_obs_n, done_n = self._get_n_step_info()
                 obs_t, action_t = self.n_step_buffer[0][:2]
@@ -158,13 +160,12 @@ class DQNAgent:
     def next_action(self, observation, epsilon: float) -> int:
         # Actualiza el contador de pasos.
         self.steps_done += 1
-        # Si usamos Noisy Nets, ignoramos epsilon
-        if self.use_noisy:
-            should_explore = False
-        else: # Si no usamos Noisy, usamos Epsilon-Greedy
-            should_explore = random.random() < epsilon
-        # Seleccion de accion.
-        if not should_explore:
+
+        # Hibridación: Primero verificamos Epsilon (Warmup), luego la Red (Noisy/Greedy).
+        if random.random() < epsilon:
+            # Accion aleatoria
+            action = random.randrange(self.n_actions)
+        else:
             '''-------------------------------------------- LÓGICA DE NOISY NET + C51 ----------------------------------------'''
             # Accion greedy (o Noisy)
             with torch.no_grad():
@@ -173,8 +174,10 @@ class DQNAgent:
                 # Si la red espera un batch y recibimos (C,H,W), añadimos dim 0
                 if obs_tensor.dim() == 3:
                     obs_tensor = obs_tensor.unsqueeze(0)
+                
                 # Obtener predicción de la red
                 dist = self.policy_net(obs_tensor) # Shape: (1, n_actions, n_atoms) si es C51
+                
                 # Seleccionar acción normal o en base a distribución
                 if self.use_distributional == False:
                     action = dist.argmax(dim=1).item()
@@ -184,9 +187,7 @@ class DQNAgent:
                     # Seleccionamos la accion con mayor valor esperado
                     action = expected_value.argmax(dim=1).item()
             '''-------------------------------------------- LÓGICA DE NOISY NET + C51 ----------------------------------------'''
-        else:
-            # Accion aleatoria
-            action = random.randrange(self.n_actions)
+    
         return action
 
 
@@ -289,7 +290,7 @@ class DQNAgent:
                     elementwise_loss = torch.nn.functional.smooth_l1_loss(state_action_values, expected_state_action_values, reduction='none')
                     # Loss ponderado por los pesos.
                     loss = (elementwise_loss * weights_tensor.squeeze()).mean()
-                    # Calculamos TD Error para actualizar el árbo.
+                    # Calculamos TD Error para actualizar el arbol.
                     self.td_errors = torch.abs(state_action_values - expected_state_action_values).detach().cpu().numpy()
                     '''---------------------------------------- LÓGICA PER LOSS ----------------------------------------'''
             else: 

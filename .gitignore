@@ -3,4 +3,3 @@
 env/
 __pycache__/
 ./models/DQNAgent/
-in_progress_model_*.pth
