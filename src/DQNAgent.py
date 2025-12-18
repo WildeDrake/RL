@@ -57,8 +57,8 @@ class DQNAgent:
             self.n_atoms = 1
         else:
             self.n_atoms = 51   # Número de átomos para C51.
-            self.v_min = -10.0  # Rango minimo de recompensa esperado.
-            self.v_max = 10.0   # Rango máximo de recompensa esperado.
+            self.v_min = 0.0  # Rango minimo de recompensa esperado.
+            self.v_max = 20.0   # Rango máximo de recompensa esperado.
             self.support = torch.linspace(self.v_min, self.v_max, self.n_atoms).to(device) # Vector de soporte (los valores de las barras del histograma).
             self.delta_z = (self.v_max - self.v_min) / (self.n_atoms - 1) # Ancho de cada barra del histograma.
         '''----------------------------------------- Parámetros Rainbow DQN -----------------------------------------'''
@@ -103,6 +103,8 @@ class DQNAgent:
 
     # Almacena una nueva transicion en la memoria de repeticion.
     def new_transition(self, observation, action, reward, next_observation, done):
+        # Normalizacion de recompensa
+        reward = float(reward)/5.0  
         # Convierte las observaciones a numpy arrays si es necesario.
         obs = np.array(observation, copy=False)
         # Convierte la siguiente observacion a numpy array si no es None.
@@ -158,13 +160,12 @@ class DQNAgent:
     def next_action(self, observation, epsilon: float) -> int:
         # Actualiza el contador de pasos.
         self.steps_done += 1
-        # Si usamos Noisy Nets, ignoramos epsilon
-        if self.use_noisy:
-            should_explore = False
-        else: # Si no usamos Noisy, usamos Epsilon-Greedy
-            should_explore = random.random() < epsilon
-        # Seleccion de accion.
-        if not should_explore:
+
+        # Hibridación: Primero verificamos Epsilon (Warmup), luego la Red (Noisy/Greedy).
+        if random.random() < epsilon:
+            # Accion aleatoria
+            action = random.randrange(self.n_actions)
+        else:
             '''-------------------------------------------- LÓGICA DE NOISY NET + C51 ----------------------------------------'''
             # Accion greedy (o Noisy)
             with torch.no_grad():
@@ -173,8 +174,10 @@ class DQNAgent:
                 # Si la red espera un batch y recibimos (C,H,W), añadimos dim 0
                 if obs_tensor.dim() == 3:
                     obs_tensor = obs_tensor.unsqueeze(0)
+                
                 # Obtener predicción de la red
                 dist = self.policy_net(obs_tensor) # Shape: (1, n_actions, n_atoms) si es C51
+                
                 # Seleccionar acción normal o en base a distribución
                 if self.use_distributional == False:
                     action = dist.argmax(dim=1).item()
@@ -184,9 +187,7 @@ class DQNAgent:
                     # Seleccionamos la accion con mayor valor esperado
                     action = expected_value.argmax(dim=1).item()
             '''-------------------------------------------- LÓGICA DE NOISY NET + C51 ----------------------------------------'''
-        else:
-            # Accion aleatoria
-            action = random.randrange(self.n_actions)
+    
         return action
 
 

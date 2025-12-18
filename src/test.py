@@ -15,7 +15,7 @@ def testLoopDQN(episodes, max_steps_per_episode, env, policy_net, device, use_di
     if use_distributional == False:
         support = None
     else:
-        support = torch.linspace(-10.0, 10.0, 51).to(device)
+        support = torch.linspace(0.0, 20.0, 51).to(device)
 
     # Ejecutar los episodios de prueba.
     for ep in range(episodes):
