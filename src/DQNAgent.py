@@ -37,7 +37,7 @@ class DQNAgent:
         use_distributional: bool=False  # Habilitar Distributional RL (C51)
         #----------------------------------------- Flags Rainbow DQN -----------------------------------------#
     ) -> None:
-        '''----------------------------------------- Parámetros Rainbow DQN -----------------------------------------'''
+        '''----------------------------------------- Parametros Rainbow DQN -----------------------------------------'''
         # Double
         self.use_double = use_double
         # Dueling
@@ -56,12 +56,12 @@ class DQNAgent:
         if self.use_distributional == False:
             self.n_atoms = 1
         else:
-            self.n_atoms = 51   # Número de átomos para C51.
+            self.n_atoms = 51   # Número de atomos para C51.
             self.v_min = 0.0  # Rango minimo de recompensa esperado.
-            self.v_max = 20.0   # Rango máximo de recompensa esperado.
+            self.v_max = 20.0   # Rango maximo de recompensa esperado.
             self.support = torch.linspace(self.v_min, self.v_max, self.n_atoms).to(device) # Vector de soporte (los valores de las barras del histograma).
             self.delta_z = (self.v_max - self.v_min) / (self.n_atoms - 1) # Ancho de cada barra del histograma.
-        '''----------------------------------------- Parámetros Rainbow DQN -----------------------------------------'''
+        '''----------------------------------------- Parametros Rainbow DQN -----------------------------------------'''
         self.n_actions = n_actions
         self.device = device
         # Inicializa las redes (policy y target).
@@ -117,7 +117,7 @@ class DQNAgent:
             # Guardar en buffer temporal
             transition = (obs, action, reward, next_obs, done)
             self.n_step_buffer.append(transition)
-            # Si el buffer está lleno, calculamos la recompensa acumulada
+            # Si el buffer esta lleno, calculamos la recompensa acumulada
             if len(self.n_step_buffer) == self.n_steps:
                 reward_n, next_obs_n, done_n = self._get_n_step_info()
                 obs_t, action_t = self.n_step_buffer[0][:2]
@@ -290,7 +290,7 @@ class DQNAgent:
                     elementwise_loss = torch.nn.functional.smooth_l1_loss(state_action_values, expected_state_action_values, reduction='none')
                     # Loss ponderado por los pesos.
                     loss = (elementwise_loss * weights_tensor.squeeze()).mean()
-                    # Calculamos TD Error para actualizar el árbo.
+                    # Calculamos TD Error para actualizar el arbol.
                     self.td_errors = torch.abs(state_action_values - expected_state_action_values).detach().cpu().numpy()
                     '''---------------------------------------- LÓGICA PER LOSS ----------------------------------------'''
             else: 
