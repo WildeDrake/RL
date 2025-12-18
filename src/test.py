@@ -52,7 +52,33 @@ def testLoopDQN(episodes, max_steps_per_episode, env, policy_net, device, use_di
 
 # Funcion de test para el agente PPO.
 def testLoopPPO(episodes, max_steps_per_episode, env, policy_net, device):
-    pass
+    # Ejecutar los episodios de prueba.
+    for ep in range(episodes):
+        total_reward = 0
+        observation, _ = env.reset()
+        # Bucle principal del episodio.
+        for step in range(max_steps_per_episode):
+            # Convertir la observación a tensor.
+            obs_t = torch.tensor(observation, dtype=torch.float32, device=device)
+            # Agregar dimension de batch (C, H, W) -> (1, C, H, W).
+            if obs_t.dim() == 3:
+                obs_t = obs_t.unsqueeze(0)
+            # Seleccion de accion desde la distribucion de probabilidades.
+            with torch.no_grad():
+                # Obtener logits de accion y valor desde la red de politicas.
+                logits, value = policy_net(obs_t)
+                # Crear distribucion de probabilidad sobre las acciones.
+                dist = torch.distributions.Categorical(logits=logits)
+                # Muestrear accion de la distribucion.
+                action = dist.sample().item()
+            # Paso en el entorno.
+            observation, reward, terminated, truncated, _ = env.step(action)
+            total_reward += reward
+            # Terminar el episodio si es necesario.
+            if terminated or truncated:
+                break
+        print(f"Episodio {ep+1}/{episodes} - Recompensa total: {total_reward}")
+
 
 
 
@@ -91,9 +117,8 @@ def test(config_data):
         policy_net = DQN(input_shape, n_actions, use_dueling=use_dueling, use_noisy=use_noisy, use_distributional=use_distributional).to(device)
     elif agent_type == "PPO":
         print("Probando agente: PPO")
-        env = make_ppo_env(env_name)
-        input_shape = env.observation_space.shape
-        policy_net = PPO(env.action_space.n, input_shape).to(device)
+        env = make_ppo_env(env_name, seed=0)
+        policy_net = PPO(env.action_space.n).to(device)
     else:
         raise ValueError(f"Tipo de agente no reconocido: {agent_type}")
     

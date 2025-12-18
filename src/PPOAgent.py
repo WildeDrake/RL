@@ -50,6 +50,34 @@ class PPOAgent:
         self.input_shape = input_shape
 
     def GAE(self, rewards, masks, values, next_value, gamma=0.99, tau=0.9):
+        """
+        Computes Generalized Advantage Estimation (GAE) for policy gradient methods.
+        GAE is a method that balances bias and variance in advantage estimation by combining
+        n-step returns with exponential weighting. It reduces variance while maintaining
+        reasonable bias in advantage estimates.
+        Args:
+            rewards (torch.Tensor or np.ndarray): Rewards collected at each step.
+                Shape: (num_steps,)
+            masks (torch.Tensor or np.ndarray): Done masks indicating episode termination.
+                Shape: (num_steps,). Values are 1.0 for continuing steps, 0.0 for terminal states.
+            values (torch.Tensor or np.ndarray): Value estimates for each state in the trajectory.
+                Shape: (num_steps,)
+            next_value (float): Bootstrapped value estimate for the state after the last step.
+            gamma (float, optional): Discount factor for future rewards. Default: 0.99
+            tau (float, optional): GAE decay parameter (lambda). Controls the trade-off between
+                bias and variance. Default: 0.9
+                - tau=0: Only uses single-step TD error (high bias, low variance)
+                - tau=1: Uses full returns (low bias, high variance)
+        Returns:
+            tuple: A tuple containing:
+                - advantages (torch.Tensor): Computed advantage estimates. 
+                    Shape: (num_steps,). Moved to self.device as float32.
+                - returns (torch.Tensor): Discounted cumulative returns (advantages + original values).
+                    Shape: (num_steps,)
+        Notes:
+            The GAE formula used is: g_t = δ_t + (γτ) * mask_t * g_{t+1}
+            where δ_t is the temporal difference error (delta) at step t.
+        """
         # Convertir a numpy arrays para procesamiento
         rewards_np = rewards.cpu().numpy() if isinstance(rewards, torch.Tensor) else np.array(rewards)
         masks_np = masks.cpu().numpy() if isinstance(masks, torch.Tensor) else np.array(masks)
@@ -155,7 +183,7 @@ class PPOAgent:
         
         # Tamaño total del dataset
         dataset_size = len(reward_batch)
-        
+
         # Normalizar ventajas para estabilidad numérica, antes de dividir en mini-batches
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
         for epoch in range(n_epochs_ppo):
